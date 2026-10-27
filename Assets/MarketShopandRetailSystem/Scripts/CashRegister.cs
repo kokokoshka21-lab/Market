@@ -8,6 +8,8 @@ namespace MarketShopandRetailSystem
     public class CashRegister : MonoBehaviour
     {
         public bool isBusy = false;
+        [Tooltip("Complete the purchase automatically after the last item is scanned, without giving change.")]
+        public bool payByCard = false;
         public List<Transform> pointsToPutProducts;
         public List<SellableObject> productsofCustomer;
         public Transform pointAfterScanning;
@@ -15,6 +17,7 @@ namespace MarketShopandRetailSystem
         public Transform pointCustomersCome;
         private int TotalPrice = 0;
         private int CustomerPaid = 0;
+        private bool paymentCompleted = false;
         public TMPro.TMP_Text Text_Total;
         public TMPro.TMP_Text Text_Change;
         public TMPro.TMP_Text Text_CustomerPaid;
@@ -40,6 +43,7 @@ namespace MarketShopandRetailSystem
                     products[i].transform.localPosition = pointsToPutProducts[i].transform.localPosition;
                 }
                 CurrentCivilian = civilian;
+                paymentCompleted = false;
                 TotalPrice = 0;
                 Text_Total.text = AdvancedGameManager.Instance.CurrencySymbol + "0";
                 ProductIndex = 0;
@@ -102,6 +106,11 @@ namespace MarketShopandRetailSystem
 
         public void Click_Button_Process()
         {
+            if (!CanCompletePurchase())
+            {
+                return;
+            }
+
             if (Time.time > lastTimeClick + 0.25f)
             {
                 lastTimeClick = Time.time;
@@ -111,21 +120,7 @@ namespace MarketShopandRetailSystem
                     int correctChange = CustomerPaid - TotalPrice;
                     if (playersinput == correctChange)
                     {
-                        AdvancedGameManager.Instance.Get(CollactableType.Money, TotalPrice);
-                        AudioManager.Instance.Play_audioClip_CashRegisterResult(true);
-                        Bag.SetActive(false);
-                        CurrentCivilian.GoAfterShopping();
-                        for (int i = 0; i < productsofCustomer.Count; i++)
-                        {
-                            SaveLoadManager.Instance.RemoveSellableObject(productsofCustomer[i].Name, productsofCustomer[i].sellableObjectIndex);
-                            InventoryManager.Instance.CurrentEquipmentList.Remove(productsofCustomer[i].gameObject);
-                            Destroy(productsofCustomer[i].gameObject);
-                        }
-                        productsofCustomer.Clear();
-                        StartCoroutine(ShowShoppingDone());
-                        Text_Change.text = AdvancedGameManager.Instance.CurrencySymbol + "0";
-                        Text_Total.text = AdvancedGameManager.Instance.CurrencySymbol + "0";
-                        Text_CustomerPaid.text = AdvancedGameManager.Instance.CurrencySymbol + "0";
+                        CompletePurchase();
                     }
                     else
                     {
@@ -137,7 +132,23 @@ namespace MarketShopandRetailSystem
 
         public void Click_Button_Process_ByCashier()
         {
-            int correctChange = CustomerPaid - TotalPrice;
+            CompletePurchase();
+        }
+
+        private bool CanCompletePurchase()
+        {
+            return isBusy && !paymentCompleted && CurrentCivilian != null
+                && productsofCustomer.Count > 0 && ProductIndex == productsofCustomer.Count;
+        }
+
+        private void CompletePurchase()
+        {
+            if (!CanCompletePurchase())
+            {
+                return;
+            }
+
+            paymentCompleted = true;
             AdvancedGameManager.Instance.Get(CollactableType.Money, TotalPrice);
             AudioManager.Instance.Play_audioClip_CashRegisterResult(true);
             Bag.SetActive(false);
@@ -205,6 +216,12 @@ namespace MarketShopandRetailSystem
 
         public void Scan(SellableObject product)
         {
+            if (!isBusy || paymentCompleted || product == null || !product.enabled
+                || !productsofCustomer.Contains(product))
+            {
+                return;
+            }
+
             product.enabled = false;
             TotalPrice = TotalPrice + product.GetSellingPrice();
             Text_Total.text = AdvancedGameManager.Instance.CurrencySymbol + TotalPrice.ToString();
@@ -215,6 +232,13 @@ namespace MarketShopandRetailSystem
             {
                 if (CurrentCivilian != null)
                 {
+                    if (payByCard)
+                    {
+                        CustomerPaid = TotalPrice;
+                        CompletePurchase();
+                        return;
+                    }
+
                     CustomerPaid = CurrentCivilian.MakePayment(TotalPrice);
                     Text_CustomerPaid.text = AdvancedGameManager.Instance.CurrencySymbol + CustomerPaid.ToString();
                     Keyboard.SetActive(true);
@@ -247,7 +271,7 @@ namespace MarketShopandRetailSystem
             Vector3 startPosition = movingObject.position;
             float elapsedTime = 0f;
 
-            while (elapsedTime < duration)
+            while (movingObject != null && elapsedTime < duration)
             {
                 elapsedTime += Time.deltaTime;
                 float t = Mathf.Clamp01(elapsedTime / duration);
