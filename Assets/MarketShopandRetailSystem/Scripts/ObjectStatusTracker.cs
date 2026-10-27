@@ -17,8 +17,13 @@ namespace MarketShopandRetailSystem
 
         public void DestroyObjectForever()
         {
+            DestroyObjectForever(0.5f);
+        }
+
+        public void DestroyObjectForever(float destroyDelay)
+        {
             SaveLoadManager.Instance.MarkObjectAsDestroyed(ItemUniqueID);
-            Destroy(gameObject, 0.5f);
+            Destroy(gameObject, Mathf.Max(0f, destroyDelay));
         }
     }
 }

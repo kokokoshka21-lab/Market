@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -9,7 +10,11 @@ namespace MarketShopandRetailSystem
         public bool isOpened = false;
         [Min(0f)]
         public float closeDelay = 0.75f;
+        public Transform suctionTarget;
+        [Min(0f)]
+        public float suctionDuration = 0.5f;
         private readonly HashSet<Collider> nearbyObjects = new HashSet<Collider>();
+        private readonly HashSet<Transform> suckedBoxes = new HashSet<Transform>();
         private float closeAt;
 
         private void OnTriggerEnter(Collider other)
@@ -32,7 +37,8 @@ namespace MarketShopandRetailSystem
         {
             nearbyObjects.RemoveWhere(other => other == null || !other.enabled
                 || !other.gameObject.activeInHierarchy || !IsNearbyObject(other));
-            if (nearbyObjects.Count > 0)
+            suckedBoxes.RemoveWhere(box => box == null);
+            if (nearbyObjects.Count > 0 || suckedBoxes.Count > 0)
             {
                 closeAt = Time.time + Mathf.Max(0f, closeDelay);
             }
@@ -47,6 +53,8 @@ namespace MarketShopandRetailSystem
         private void OnDisable()
         {
             nearbyObjects.Clear();
+            StopAllCoroutines();
+            suckedBoxes.Clear();
         }
 
         private void TrackNearbyObject(Collider other)
@@ -106,18 +114,52 @@ namespace MarketShopandRetailSystem
                 boxCollider.enabled = false;
             }
 
+            float duration = Mathf.Max(0f, suctionDuration);
+            // Persist removal immediately; destruction remains scheduled even if the bin is disabled.
             if (body.TryGetComponent<OrderBox>(out var orderBox))
             {
-                orderBox.DestroyTheOrderBox();
+                orderBox.DestroyTheOrderBox(duration);
             }
             else if (body.TryGetComponent<ObjectStatusTracker>(out var tracker))
             {
-                tracker.DestroyObjectForever();
+                tracker.DestroyObjectForever(duration);
             }
             else
             {
-                Destroy(body.gameObject);
+                Destroy(body.gameObject, duration);
             }
+
+            if (duration > 0f)
+            {
+                suckedBoxes.Add(body.transform);
+                StartCoroutine(SuckBox(body.transform, duration));
+            }
+        }
+
+        private IEnumerator SuckBox(Transform box, float duration)
+        {
+            Vector3 startPosition = box.position;
+            Vector3 startScale = box.localScale;
+            Vector3 targetPosition = suctionTarget != null ? suctionTarget.position : transform.position;
+            float elapsed = 0f;
+
+            while (box != null && elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                float progress = Mathf.SmoothStep(0f, 1f, elapsed / duration);
+                if (suctionTarget != null) targetPosition = suctionTarget.position;
+                box.position = Vector3.Lerp(startPosition, targetPosition, progress);
+                box.localScale = Vector3.Lerp(startScale, Vector3.zero, progress);
+                yield return null;
+            }
+
+            if (box != null)
+            {
+                box.position = targetPosition;
+                box.localScale = Vector3.zero;
+            }
+            suckedBoxes.Remove(box);
+            closeAt = Time.time + Mathf.Max(0f, closeDelay);
         }
     }
 }

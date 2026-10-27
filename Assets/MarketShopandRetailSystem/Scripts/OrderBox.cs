@@ -62,10 +62,15 @@ namespace MarketShopandRetailSystem
 
         public void DestroyTheOrderBox()
         {
+            DestroyTheOrderBox(0.5f);
+        }
+
+        public void DestroyTheOrderBox(float destroyDelay)
+        {
             InventoryManager.Instance.RemovefromSystem(GetComponent<PhysicalEquipmentDetails>().equipmentIndex, GetComponent<PhysicalEquipmentDetails>().Name);
             InventoryManager.Instance.CurrentEquipmentList.Remove(gameObject);
             textCount.text = "0";
-            Destroy(gameObject, 0.5f);
+            Destroy(gameObject, Mathf.Max(0f, destroyDelay));
         }
 
         public IEnumerator CheckTheSlots(int time)
