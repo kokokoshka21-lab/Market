@@ -46,7 +46,7 @@ namespace MarketShopandRetailSystem
                 transform.GetComponent<BoxCollider>().enabled = true;
                 rigidbody.useGravity = true;
                 HeroPlayerScript.Instance.RemovingBox();
-                rigidbody.AddForce((transform.forward + transform.up) * HeroPlayerScript.Instance.GetBoxThrowForce(), ForceMode.Impulse);
+                rigidbody.AddForce(CameraScript.Instance.transform.forward * HeroPlayerScript.Instance.GetBoxThrowForce(), ForceMode.Impulse);
                 transform.parent = null;
                 AudioManager.Instance.Play_Item_Grab();
             }
