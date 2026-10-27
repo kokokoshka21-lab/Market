@@ -595,7 +595,7 @@ namespace MarketShopandRetailSystem
             text = item.Name + "\n";
             if (string.IsNullOrEmpty(message))
             {
-                if (item.interactionType != InteractionType.None)
+                if (item.interactionType != InteractionType.None && item.itemType != ItemType.Bin)
                 {
                     if (AdvancedGameManager.Instance.controllerType == ControllerType.PC)
                     {
@@ -611,9 +611,9 @@ namespace MarketShopandRetailSystem
             {
                 text = message;
             }
-            if (AdvancedGameManager.Instance.controllerType == ControllerType.Mobile && item.GetComponent<CashRegister>() == null)
+            if (AdvancedGameManager.Instance.controllerType == ControllerType.Mobile)
             {
-                Button_Interact.SetActive(true);
+                Button_Interact.SetActive(item.GetComponent<CashRegister>() == null && item.itemType != ItemType.Bin);
             }
             GameCanvas.Instance.Text_Info.text = text;
         }

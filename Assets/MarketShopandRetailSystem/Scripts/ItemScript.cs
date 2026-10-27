@@ -221,34 +221,7 @@ namespace MarketShopandRetailSystem
         public Image imageToFill;
         public float lastTime = 0;
 
-        private void OnTriggerEnter(Collider other)
-        {
-            if (!this.enabled) return;
 
-            if (other.CompareTag("Item") && other.GetComponent<ItemScript>() != null  && itemType == ItemType.Bin)
-            {
-                // Let's send it to Bin
-                if (GetComponent<BinScript>().isOpened)
-                {
-                    if (other.GetComponent<BoxScript>() != null && other.GetComponent<BoxScript>().rigidbody.isKinematic == false)
-                    {
-                        if (other.GetComponent<ObjectStatusTracker>() != null)
-                        {
-                            other.GetComponent<ObjectStatusTracker>().DestroyObjectForever();
-                        }
-                        else
-                        {
-                            Destroy(other.gameObject);
-                        }
-                    }
-                    else if (other.TryGetComponent<OrderBox>(out var orderBox)
-                        && orderBox.rigidbody != null && !orderBox.rigidbody.isKinematic)
-                    {
-                        orderBox.DestroyTheOrderBox();
-                    }
-                }
-            }
-        }
     }
 
     public enum ItemType
