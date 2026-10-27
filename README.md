@@ -1,20 +1,86 @@
 # MarketShop
 
-Unity project for MarketShop.
+MarketShop — проект трёхмерного симулятора магазина на Unity. Игрок управляет магазином: работает с товарами и оборудованием, обслуживает покупателей, задаёт цены и нанимает сотрудников. Основная игровая логика написана на C# и находится в пространстве имён `MarketShopandRetailSystem`.
 
-## Getting started
+## Игровые системы
 
-1. Install the Unity Editor version specified in `ProjectSettings/ProjectVersion.txt` using Unity Hub.
-2. Clone this repository.
-3. In Unity Hub, choose **Add project from disk** and select the cloned folder.
-4. Open the project in Unity.
+В исходном коде представлены:
 
-## Repository layout
+- управление персонажем от первого лица, взаимодействие с предметами и размещение оборудования;
+- товары, инвентарь, заказы, полки и цены продажи;
+- касса, наличные деньги и выдача сдачи;
+- покупатели и другие NPC, кассиры и уборщики;
+- деньги, опыт игрока и счета магазина;
+- смена дня и ночи, погода, звук и настройки;
+- главное меню, новая игра, продолжение и сохранение прогресса.
 
-- `Assets/` — scenes, scripts, art and other project assets.
-- `Packages/` — Unity package manifest and dependencies.
-- `ProjectSettings/` — shared Unity project configuration.
+## Технологии
 
-Generated folders such as `Library/`, `Logs/` and `UserSettings/` are excluded from future commits via `.gitignore`.
+- **Unity 6000.3.25f1** — версия закреплена в [ProjectVersion.txt](ProjectSettings/ProjectVersion.txt).
+- **C#** — игровые компоненты и логика.
+- **Unity Input System** — обработка ввода.
+- **AI Navigation** — инструменты навигации.
+- **Unity UI и TextMesh Pro** — интерфейс и текст.
 
-> Note: Files already tracked by Git are not removed automatically by adding `.gitignore`.
+Полный список зависимостей находится в [Packages/manifest.json](Packages/manifest.json), закреплённые версии — в [Packages/packages-lock.json](Packages/packages-lock.json). Наличие пакета в списке зависимостей само по себе не означает, что его возможности используются в игре.
+
+## Структура репозитория
+
+```text
+Assets/
+├── MarketShopandRetailSystem/
+│   ├── Scripts/          # Игровая логика на C#
+│   ├── Scenes/           # Главное меню и игровая сцена
+│   └── …                 # Модели, материалы, текстуры и другие ресурсы
+└── TextMesh Pro/          # Ресурсы текстового интерфейса
+Packages/                 # Манифест и lock-файл зависимостей Unity
+ProjectSettings/          # Общие настройки проекта
+README.md                 # Описание проекта
+```
+
+Основные сцены в настройках сборки:
+
+| Сцена | Назначение |
+| --- | --- |
+| `Assets/MarketShopandRetailSystem/Scenes/MainMenu.unity` | Главное меню, начало и продолжение игры |
+| `Assets/MarketShopandRetailSystem/Scenes/GamePlay.unity` | Основной игровой процесс |
+
+Основные скрипты находятся в `Assets/MarketShopandRetailSystem/Scripts/`:
+
+| Скрипт | Назначение |
+| --- | --- |
+| `AdvancedGameManager.cs` | Общие параметры и состояние игры |
+| `FirstPersonController.cs` | Управление персонажем |
+| `InventoryManager.cs` | Инвентарь |
+| `ShopScript.cs` | Логика магазина |
+| `CashRegister.cs` | Касса |
+| `NPCManager.cs` | Управление NPC |
+| `SaveLoadManager.cs`, `GameSaveData.cs` | Сохранение, загрузка и структура данных прогресса |
+| `MainMenuCanvas.cs`, `GameCanvas.cs` | Главное меню и игровой интерфейс |
+
+## Как открыть проект
+
+Для чтения и редактирования исходных файлов достаточно клонировать репозиторий. Для запуска игры и сборки нужен Unity Editor.
+
+1. Установите Unity Hub и Unity Editor **6000.3.25f1** с действующей лицензией.
+2. Клонируйте репозиторий:
+
+   ```bash
+   git clone https://github.com/kokokoshka21-lab/Market.git
+   ```
+
+3. В Unity Hub выберите **Add project from disk** и укажите папку `Market`, содержащую `Assets`, `Packages` и `ProjectSettings`.
+4. Откройте проект и дождитесь импорта ресурсов и восстановления пакетов. Для загрузки пакетов нужен доступ к реестру Unity.
+5. Откройте сцену `Assets/MarketShopandRetailSystem/Scenes/MainMenu.unity` и нажмите **Play**.
+
+Конкретные привязки управления и параметры компонентов следует смотреть в Input Actions, скриптах и Inspector соответствующей сцены.
+
+## Сохранения
+
+`SaveLoadManager` записывает прогресс в файл `gamesave.json` внутри `Application.persistentDataPath`. Фактический путь зависит от операционной системы и настроек приложения. Данные включают деньги, опыт, инвентарь, размещённые объекты, магазины, сотрудников и счета. Начало новой игры из главного меню удаляет предыдущее сохранение.
+
+## Сгенерированные файлы и проверки
+
+В текущей истории Git уже отслеживаются `Library/`, `Logs/` и `UserSettings/`. Это кэш Unity, журналы и локальные настройки. Они указаны в `.gitignore`, но это не прекращает отслеживание ранее добавленных файлов. `Library/` занимает основную часть объёма репозитория и не является исходным кодом игры.
+
+В проекте подключён Unity Test Framework, однако отдельных пользовательских тестов и настроенного CI при просмотре репозитория не обнаружено. Запуск игры, компиляция и сборка в облачном окружении не проверялись; описание основано на исходных файлах и настройках проекта.
