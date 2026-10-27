@@ -21,6 +21,7 @@ namespace MarketShopandRetailSystem
         private int TotalPrice = 0;
         private int CustomerPaid = 0;
         private bool paymentCompleted = false;
+        private bool customerPaysByCard = false;
         public TMPro.TMP_Text Text_Total;
         public TMPro.TMP_Text Text_Change;
         public TMPro.TMP_Text Text_CustomerPaid;
@@ -47,6 +48,7 @@ namespace MarketShopandRetailSystem
                 }
                 CurrentCivilian = civilian;
                 paymentCompleted = false;
+                customerPaysByCard = false;
                 TotalPrice = 0;
                 Text_Total.text = AdvancedGameManager.Instance.CurrencySymbol + "0";
                 ProductIndex = 0;
@@ -109,7 +111,7 @@ namespace MarketShopandRetailSystem
 
         public void Click_Button_Process()
         {
-            if (!CanCompletePurchase())
+            if (customerPaysByCard || !CanCompletePurchase())
             {
                 return;
             }
@@ -131,6 +133,16 @@ namespace MarketShopandRetailSystem
                     }
                 }
             }
+        }
+
+        public void Click_Button_PayByCard()
+        {
+            if (!customerPaysByCard || !CanCompletePurchase())
+            {
+                return;
+            }
+
+            CompletePurchase();
         }
 
         public void Click_Button_Process_ByCashier()
@@ -235,10 +247,14 @@ namespace MarketShopandRetailSystem
             {
                 if (CurrentCivilian != null)
                 {
-                    if (payByCard && (cardPaymentChance >= 1f || UnityEngine.Random.value < cardPaymentChance))
+                    customerPaysByCard = payByCard && (cardPaymentChance >= 1f || UnityEngine.Random.value < cardPaymentChance);
+                    if (customerPaysByCard)
                     {
                         CustomerPaid = TotalPrice;
-                        CompletePurchase();
+                        Text_CustomerPaid.text = "CARD";
+                        Keyboard.SetActive(true);
+                        BankNotes.SetActive(false);
+                        Numbers.SetActive(false);
                         return;
                     }
 
