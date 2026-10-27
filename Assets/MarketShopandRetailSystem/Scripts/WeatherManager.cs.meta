@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: a11c3912423359d43b06318a0b3a3c40
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 291107
+  packageName: Market, Shop, Store and Retail Game Creator for Both PC and Mobile
+    Platforms
+  packageVersion: 7.1
+  assetPath: Assets/MarketShopandRetailSystem/Scripts/WeatherManager.cs
+  uploadId: 846466

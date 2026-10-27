@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: 680372ebdbe8b49b5883230b52c2f2b4
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 291107
+  packageName: Market, Shop, Store and Retail Game Creator for Both PC and Mobile
+    Platforms
+  packageVersion: 7.1
+  assetPath: Assets/MarketShopandRetailSystem/Scripts/NPCManager.cs
+  uploadId: 846466

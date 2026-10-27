@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: 647a3776c7261934797c104bdd7b5b6e
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 291107
+  packageName: Market, Shop, Store and Retail Game Creator for Both PC and Mobile
+    Platforms
+  packageVersion: 7.1
+  assetPath: Assets/MarketShopandRetailSystem/Scripts/Touchpad.cs
+  uploadId: 846466

@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 107dd9dcc1ec24745882ad7d1148ff85
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 36300000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 291107
+  packageName: Market, Shop, Store and Retail Game Creator for Both PC and Mobile
+    Platforms
+  packageVersion: 7.1
+  assetPath: Assets/MarketShopandRetailSystem/Scenes/GamePlay/OcclusionCullingData.asset
+  uploadId: 846466
