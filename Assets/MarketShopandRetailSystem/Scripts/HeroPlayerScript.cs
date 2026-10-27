@@ -24,6 +24,17 @@ namespace MarketShopandRetailSystem
 
         [HideInInspector]
         public bool isHoldingBox = false;
+        [Header("Box throwing")]
+        [Min(0f)]
+        public float baseBoxThrowForce = 3f;
+        [Min(0f)]
+        public float maxBoxThrowForce = 12f;
+        [Min(0.01f)]
+        [Tooltip("Seconds of charging after a 0.2 second tap window to reach maximum throw force.")]
+        public float boxThrowChargeTime = 1.5f;
+        private const float BoxThrowTapDuration = 0.2f;
+        private ItemScript chargingBox;
+        private float boxThrowChargeStartedAt;
         public GameObject MainCamera;
         private int currentKeyIdinHands = -1;
         private bool isHeroBusy = false;
@@ -152,11 +163,48 @@ namespace MarketShopandRetailSystem
         public void PointerUp()
         {
             isButtonInteractHeld = false;
+            if (chargingBox != null && chargingBox == InteractableObject && IsHoldingInteractableBox())
+            {
+                Interact();
+            }
+            chargingBox = null;
         }
 
         public void PointerDown()
         {
             isButtonInteractHeld = true;
+            BeginBoxThrowCharge();
+        }
+
+        private bool IsHoldingInteractableBox()
+        {
+            return isHoldingBox && InteractableObject != null
+                && (InteractableObject.itemType == ItemType.Box || InteractableObject.itemType == ItemType.OrderBox);
+        }
+
+        private void BeginBoxThrowCharge()
+        {
+            chargingBox = IsHoldingInteractableBox() ? InteractableObject : null;
+            boxThrowChargeStartedAt = Time.time;
+        }
+
+        private void OnDisable()
+        {
+            chargingBox = null;
+            isButtonInteractHeld = false;
+        }
+
+        public float GetBoxThrowForce()
+        {
+            float baseForce = Mathf.Max(0f, baseBoxThrowForce);
+            if (chargingBox == null || chargingBox != InteractableObject)
+            {
+                return baseForce;
+            }
+
+            float charge = Mathf.Clamp01((Time.time - boxThrowChargeStartedAt - BoxThrowTapDuration)
+                / Mathf.Max(0.01f, boxThrowChargeTime));
+            return Mathf.Lerp(baseForce, Mathf.Max(baseForce, maxBoxThrowForce), charge);
         }
 
         public void PointerUpForGettingItemBack()
@@ -241,6 +289,22 @@ namespace MarketShopandRetailSystem
 
         private void Update()
         {
+            if (!IsHoldingInteractableBox() || chargingBox != InteractableObject || Time.timeScale == 0f)
+            {
+                chargingBox = null;
+            }
+            if (AdvancedGameManager.Instance.controllerType != ControllerType.Mobile
+                && AdvancedGameManager.Instance.interactAction.WasPressedThisFrame())
+            {
+                BeginBoxThrowCharge();
+            }
+            else if (AdvancedGameManager.Instance.controllerType != ControllerType.Mobile
+                && !AdvancedGameManager.Instance.interactAction.IsPressed()
+                && !AdvancedGameManager.Instance.interactAction.WasReleasedThisFrame())
+            {
+                chargingBox = null;
+            }
+
             if (Camera.main != null)
             {
                 if (currentCashRegister != null)
@@ -439,9 +503,15 @@ namespace MarketShopandRetailSystem
                     }
                 }
             }
-            if (AdvancedGameManager.Instance.controllerType == ControllerType.Mobile && isButtonInteractHeld)
+            if (AdvancedGameManager.Instance.controllerType == ControllerType.Mobile && isButtonInteractHeld
+                && !IsHoldingInteractableBox())
             {
                 Interact();
+            }
+            if (AdvancedGameManager.Instance.controllerType != ControllerType.Mobile
+                && AdvancedGameManager.Instance.interactAction.WasReleasedThisFrame())
+            {
+                chargingBox = null;
             }
         }
 
