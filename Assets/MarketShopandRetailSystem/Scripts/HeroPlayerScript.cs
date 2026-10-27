@@ -29,6 +29,9 @@ namespace MarketShopandRetailSystem
         public float baseBoxThrowForce = 3f;
         [Min(0f)]
         public float maxBoxThrowForce = 12f;
+        [Min(0f)]
+        [Tooltip("Upward direction factor relative to the camera: 0 = straight, 1 = 45 degrees upward. Actual height also depends on force and gravity.")]
+        public float boxThrowHeight = 1f;
         [Min(0.01f)]
         [Tooltip("Seconds of charging after a 0.2 second tap window to reach maximum throw force.")]
         public float boxThrowChargeTime = 1.5f;
@@ -205,6 +208,12 @@ namespace MarketShopandRetailSystem
             float charge = Mathf.Clamp01((Time.time - boxThrowChargeStartedAt - BoxThrowTapDuration)
                 / Mathf.Max(0.01f, boxThrowChargeTime));
             return Mathf.Lerp(baseForce, Mathf.Max(baseForce, maxBoxThrowForce), charge);
+        }
+
+        public Vector3 GetBoxThrowDirection()
+        {
+            Transform cameraTransform = CameraScript.Instance.transform;
+            return (cameraTransform.forward + cameraTransform.up * Mathf.Max(0f, boxThrowHeight)).normalized;
         }
 
         public void PointerUpForGettingItemBack()
