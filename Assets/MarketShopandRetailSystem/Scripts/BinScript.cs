@@ -13,6 +13,12 @@ namespace MarketShopandRetailSystem
         public Transform suctionTarget;
         [Min(0f)]
         public float suctionDuration = 0.5f;
+        [Min(0f)]
+        [Tooltip("Minimum suction rotation speed in degrees per second.")]
+        public float minSuctionRotationSpeed = 180f;
+        [Min(0f)]
+        [Tooltip("Maximum suction rotation speed in degrees per second.")]
+        public float maxSuctionRotationSpeed = 540f;
         private readonly HashSet<Collider> nearbyObjects = new HashSet<Collider>();
         private readonly HashSet<Transform> suckedBoxes = new HashSet<Transform>();
         private float closeAt;
@@ -140,16 +146,22 @@ namespace MarketShopandRetailSystem
         {
             Vector3 startPosition = box.position;
             Vector3 startScale = box.localScale;
+            Quaternion startRotation = box.rotation;
+            Vector3 rotationAxis = Random.onUnitSphere;
+            float minSpeed = Mathf.Max(0f, Mathf.Min(minSuctionRotationSpeed, maxSuctionRotationSpeed));
+            float maxSpeed = Mathf.Max(minSpeed, Mathf.Max(minSuctionRotationSpeed, maxSuctionRotationSpeed));
+            float rotationSpeed = Random.Range(minSpeed, maxSpeed);
             Vector3 targetPosition = suctionTarget != null ? suctionTarget.position : transform.position;
             float elapsed = 0f;
 
             while (box != null && elapsed < duration)
             {
-                elapsed += Time.deltaTime;
+                elapsed = Mathf.Min(elapsed + Time.deltaTime, duration);
                 float progress = Mathf.SmoothStep(0f, 1f, elapsed / duration);
                 if (suctionTarget != null) targetPosition = suctionTarget.position;
                 box.position = Vector3.Lerp(startPosition, targetPosition, progress);
                 box.localScale = Vector3.Lerp(startScale, Vector3.zero, progress);
+                box.rotation = Quaternion.AngleAxis(rotationSpeed * elapsed, rotationAxis) * startRotation;
                 yield return null;
             }
 

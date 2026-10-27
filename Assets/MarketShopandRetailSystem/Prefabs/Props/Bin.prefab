@@ -229,6 +229,8 @@ MonoBehaviour:
   closeDelay: 0.75
   suctionTarget: {fileID: 8000000000000000007}
   suctionDuration: 0.5
+  minSuctionRotationSpeed: 180
+  maxSuctionRotationSpeed: 540
 --- !u!65 &4978174945994138260
 BoxCollider:
   m_ObjectHideFlags: 0
