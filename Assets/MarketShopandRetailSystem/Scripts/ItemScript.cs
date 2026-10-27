@@ -241,9 +241,10 @@ namespace MarketShopandRetailSystem
                             Destroy(other.gameObject);
                         }
                     }
-                    else if(other.GetComponent<ItemScript>() != null && other.GetComponent<OrderBox>().rigidbody.isKinematic == false && other.GetComponent<OrderBox>().isEmpty())
+                    else if (other.TryGetComponent<OrderBox>(out var orderBox)
+                        && orderBox.rigidbody != null && !orderBox.rigidbody.isKinematic)
                     {
-                        other.GetComponent<OrderBox>().DestroyTheOrderBox();
+                        orderBox.DestroyTheOrderBox();
                     }
                 }
             }
