@@ -8,8 +8,11 @@ namespace MarketShopandRetailSystem
     public class CashRegister : MonoBehaviour
     {
         public bool isBusy = false;
-        [Tooltip("Complete the purchase automatically after the last item is scanned, without giving change.")]
+        [Tooltip("Allow customers to pay by card according to Card Payment Chance, without giving change.")]
         public bool payByCard = false;
+        [Range(0f, 1f)]
+        [Tooltip("Chance of paying by card when Pay By Card is enabled: 0 = never, 1 = always.")]
+        public float cardPaymentChance = 1f;
         public List<Transform> pointsToPutProducts;
         public List<SellableObject> productsofCustomer;
         public Transform pointAfterScanning;
@@ -232,7 +235,7 @@ namespace MarketShopandRetailSystem
             {
                 if (CurrentCivilian != null)
                 {
-                    if (payByCard)
+                    if (payByCard && (cardPaymentChance >= 1f || UnityEngine.Random.value < cardPaymentChance))
                     {
                         CustomerPaid = TotalPrice;
                         CompletePurchase();
