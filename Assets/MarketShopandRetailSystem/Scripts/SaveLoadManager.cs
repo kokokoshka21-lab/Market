@@ -580,7 +580,7 @@ namespace MarketShopandRetailSystem
                 x.productName == productName && x.objectIndex == productIndex);
             if (shelf == null || box == null || shelf == box || !box.hasBoxContents || box.boxContents == null
                 || product == null || shelfSlot < 0 || boxSlot < 0
-                || box.boxContents.Exists(x => x.slotIndex == boxSlot)) return false;
+                || box.boxContents.Exists(x => x.slotIndex == boxSlot || x.productName != productName)) return false;
             currentSaveData.sellableObjects.Remove(product);
             SetSlotStatus(shelf, shelfSlot, -1);
             box.boxContents.Add(new BoxSlotData { slotIndex = boxSlot, productName = productName });

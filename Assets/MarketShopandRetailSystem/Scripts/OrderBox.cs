@@ -11,7 +11,7 @@ namespace MarketShopandRetailSystem
         public bool isHolding = false;
         public Rigidbody rigidbody;
         private Vector3 initialSize;
-        [Tooltip("Initial shipment product only. This box can accept any product after delivery.")]
+        [Tooltip("Initial shipment product only. Empty boxes accept any product; filled boxes accept only the same product.")]
         public GameObject sellableObjectPrefab;
         public bool ContentsReady { get; private set; }
         public ArrayableArea arrayableArea;
@@ -102,7 +102,9 @@ namespace MarketShopandRetailSystem
 
         public bool CanStoreProduct(SellableObject product)
         {
-            return ContentsReady && product != null && FindProductPrefab(product.Name) != null;
+            if (!ContentsReady || product == null || FindProductPrefab(product.Name) == null) return false;
+            return arrayableArea.PlacablePoints.All(point => point.objectToGrab == null
+                || point.objectToGrab.GetComponent<SellableObject>().Name == product.Name);
         }
 
         public Vector3 GetProductScale(SellableObject product)

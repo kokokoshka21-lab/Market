@@ -354,7 +354,8 @@ namespace MarketShopandRetailSystem
             PlacablePoint source = TriggerScript.Instance.placablePoints.FirstOrDefault(x => x != null
                 && !x.isAvailable && x.objectToGrab != null
                 && x.GetComponentInParent<OrderBox>() == null
-                && !productsInTransit.Contains(x.objectToGrab.transform));
+                && !productsInTransit.Contains(x.objectToGrab.transform)
+                && CurrentOrderBox.CanStoreProduct(x.objectToGrab.GetComponent<SellableObject>()));
             if (source == null) return;
             SellableObject product = source.objectToGrab.GetComponent<SellableObject>();
             if (!CurrentOrderBox.CanStoreProduct(product)) return;
