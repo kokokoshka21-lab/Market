@@ -303,28 +303,12 @@ namespace MarketShopandRetailSystem
 
         public void GrabBack()
         {
-            if (GrableObject == null || AdvancedGameManager.Instance.CurrentMode != Mode.Free) return;
             GrabTheItemBackToInventory(GrableObject.GetComponent<PhysicalEquipmentDetails>());
             GameCanvas.Instance.Hide_GrabbingHint();
         }
 
-        public void MoveEquipment()
-        {
-            if (InventoryManager.Instance.IsMovingShelf)
-            {
-                InventoryManager.Instance.CancelLocating();
-                return;
-            }
-            if (GrableObject != null) InventoryManager.Instance.BeginMovingShelf(GrableObject);
-        }
-
         private void Update()
         {
-            if (InventoryManager.Instance != null && InventoryManager.Instance.BlocksPlayerInteraction)
-            {
-                chargingBox = null;
-                return;
-            }
             if (!IsHoldingInteractableBox() || chargingBox != InteractableObject || Time.timeScale == 0f)
             {
                 chargingBox = null;
@@ -403,31 +387,20 @@ namespace MarketShopandRetailSystem
                     // Let's check that is it an Inventory Equipment or Not
                     if (other.collider.CompareTag("Item") && other.collider.GetComponent<PhysicalEquipmentDetails>() != null && other.collider.GetComponent<ObjectPlacing>() == null && other.collider.GetComponent<OrderBox>() == null)
                     {
-                        GrableObject = other.collider.GetComponent<PhysicalEquipmentDetails>();
-                        CashRegister c = other.collider.GetComponent<CashRegister>();
-                        if ((c == null || !c.isBusy) && AdvancedGameManager.Instance.CurrentMode == Mode.Free)
+                        if (GrableObject == null || other.collider.GetComponent<PhysicalEquipmentDetails>() != GrableObject)
                         {
-                            GameCanvas.Instance.Show_GrabbingHint();
-                            if (AdvancedGameManager.Instance.relocatingAction.WasPressedThisFrame())
+                            GrableObject = other.collider.GetComponent<PhysicalEquipmentDetails>();
+                            CashRegister c = other.collider.GetComponent<CashRegister>();
+                            if (c == null || !c.isBusy)
                             {
-                                MoveEquipment();
-                                if (InventoryManager.Instance.IsMovingShelf) return;
-                            }
-                            if (AdvancedGameManager.Instance.grabbingAction.WasPressedThisFrame())
-                            {
-                                GrabBack();
+                                GameCanvas.Instance.Show_GrabbingHint();
                             }
                         }
-                        else
+                        if (AdvancedGameManager.Instance.grabbingAction.WasPressedThisFrame())
                         {
-                            GrableObject = null;
+                            GrabTheItemBackToInventory(other.collider.GetComponent<PhysicalEquipmentDetails>());
                             GameCanvas.Instance.Hide_GrabbingHint();
                         }
-                    }
-                    else
-                    {
-                        GrableObject = null;
-                        GameCanvas.Instance.Hide_GrabbingHint();
                     }
 
                     if ((other.collider.CompareTag("Item") || other.collider.CompareTag("Character")) && other.collider.GetComponent<ObjectPlacing>() == null)
