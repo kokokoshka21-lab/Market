@@ -35,6 +35,9 @@ namespace MarketShopandRetailSystem
         [Min(0.01f)]
         [Tooltip("Seconds of charging after a 0.2 second tap window to reach maximum throw force.")]
         public float boxThrowChargeTime = 1.5f;
+        [Min(0f)]
+        [Tooltip("Extra throw impulse per metre per second of actual forward movement. Set to 0 to disable.")]
+        public float boxThrowMovementMultiplier = 1f;
         private const float BoxThrowTapDuration = 0.2f;
         private ItemScript chargingBox;
         private float boxThrowChargeStartedAt;
@@ -200,14 +203,22 @@ namespace MarketShopandRetailSystem
         public float GetBoxThrowForce()
         {
             float baseForce = Mathf.Max(0f, baseBoxThrowForce);
-            if (chargingBox == null || chargingBox != InteractableObject)
+            float throwForce = baseForce;
+            if (chargingBox != null && chargingBox == InteractableObject)
             {
-                return baseForce;
+                float charge = Mathf.Clamp01((Time.time - boxThrowChargeStartedAt - BoxThrowTapDuration)
+                    / Mathf.Max(0.01f, boxThrowChargeTime));
+                throwForce = Mathf.Lerp(baseForce, Mathf.Max(baseForce, maxBoxThrowForce), charge);
             }
 
-            float charge = Mathf.Clamp01((Time.time - boxThrowChargeStartedAt - BoxThrowTapDuration)
-                / Mathf.Max(0.01f, boxThrowChargeTime));
-            return Mathf.Lerp(baseForce, Mathf.Max(baseForce, maxBoxThrowForce), charge);
+            if (characterController != null && characterController.enabled)
+            {
+                Vector3 horizontalVelocity = Vector3.ProjectOnPlane(characterController.velocity, Vector3.up);
+                Vector3 forward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
+                float forwardSpeed = Mathf.Max(0f, Vector3.Dot(horizontalVelocity, forward));
+                throwForce += forwardSpeed * Mathf.Max(0f, boxThrowMovementMultiplier);
+            }
+            return throwForce;
         }
 
         public Vector3 GetBoxThrowDirection()

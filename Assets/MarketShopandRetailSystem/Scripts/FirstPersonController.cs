@@ -9,6 +9,7 @@ namespace MarketShopandRetailSystem
         public static FirstPersonController Instance;
         public float MoveSpeed = 4.0f;
         public float SprintSpeed = 6.0f;
+        public bool allowSprintWithBox = true;
         public float RotationSpeed = 1.0f;
         public float SpeedChangeRate = 10.0f;
         public float JumpHeight = 1.2f;
@@ -125,75 +126,29 @@ namespace MarketShopandRetailSystem
             }
             if (_input == Vector2.zero) targetSpeed = 0.0f;
 
-            if (AdvancedGameManager.Instance.controllerType == ControllerType.Mobile)
+            bool isMobile = AdvancedGameManager.Instance.controllerType == ControllerType.Mobile;
+            bool sprintRequested = isMobile
+                ? Mathf.Abs(_input.x) > 0.75f || Mathf.Abs(_input.y) > 0.75f
+                : AdvancedGameManager.Instance.sprintAction.IsPressed();
+            bool canSprint = _input != Vector2.zero
+                && FPSHandRotator.Instance.Current_HandType == Hand_Type.Free
+                && (!HeroPlayerScript.Instance.isHoldingBox || allowSprintWithBox);
+            isRunning = sprintRequested && canSprint && HeroPlayerScript.Instance.Stamina > 4;
+            if (isRunning)
             {
-                if (Mathf.Abs(_input.x) > 0.75f || Mathf.Abs(_input.y) > 0.75f)
+                targetSpeed = SprintSpeed;
+                float staminaSpendPeriod = isMobile ? 0.05f : 0.1f;
+                if (Time.time > lastStaminaSpendTime + staminaSpendPeriod)
                 {
-                    if (HeroPlayerScript.Instance.Stamina > 4)
-                    {
-                        if (FPSHandRotator.Instance.Current_HandType == Hand_Type.Free)
-                        {
-                            if (!HeroPlayerScript.Instance.isHoldingBox)
-                            {
-                                targetSpeed = SprintSpeed;
-                            }
-                        }
-                        isRunning = true;
-                        if (Time.time > lastStaminaSpendTime + 0.05f)
-                        {
-                            lastStaminaSpendTime = Time.time;
-                            HeroPlayerScript.Instance.Stamina = HeroPlayerScript.Instance.Stamina - 1;
-                            GameCanvas.Instance.UpdateStamina();
-                        }
-
-                    }
-                    else
-                    {
-                        isRunning = false;
-                        if (!AudioManager.Instance.audioSource.isPlaying)
-                        {
-                            AudioManager.Instance.Play_Audio_Breathing();
-                        }
-                    }
-
+                    lastStaminaSpendTime = Time.time;
+                    HeroPlayerScript.Instance.Stamina -= 1;
+                    GameCanvas.Instance.UpdateStamina();
                 }
             }
-            else
+            else if (sprintRequested && canSprint && HeroPlayerScript.Instance.Stamina <= 4
+                && !AudioManager.Instance.audioSource.isPlaying)
             {
-                if (AdvancedGameManager.Instance.sprintAction.IsPressed())
-                {
-                    if (HeroPlayerScript.Instance.Stamina > 4)
-                    {
-                        if (FPSHandRotator.Instance.Current_HandType == Hand_Type.Free)
-                        {
-                            if (!HeroPlayerScript.Instance.isHoldingBox)
-                            {
-                                targetSpeed = SprintSpeed;
-                            }
-                        }
-                        isRunning = true;
-                        if (Time.time > lastStaminaSpendTime + 0.1f)
-                        {
-                            lastStaminaSpendTime = Time.time;
-                            HeroPlayerScript.Instance.Stamina = HeroPlayerScript.Instance.Stamina - 1;
-                            GameCanvas.Instance.UpdateStamina();
-                        }
-
-                    }
-                    else
-                    {
-                        isRunning = false;
-                        if (!AudioManager.Instance.audioSource.isPlaying)
-                        {
-                            AudioManager.Instance.Play_Audio_Breathing();
-                        }
-                    }
-
-                }
-                if (AdvancedGameManager.Instance.sprintAction.WasReleasedThisFrame())
-                {
-                    isRunning = false;
-                }
+                AudioManager.Instance.Play_Audio_Breathing();
             }
             _speed = Mathf.Lerp(_speed, targetSpeed, Time.deltaTime * SpeedChangeRate);
             _speed = Mathf.Round(_speed * 1000f) / 1000f;
