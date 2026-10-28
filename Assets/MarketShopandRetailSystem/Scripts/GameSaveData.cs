@@ -91,6 +91,12 @@ namespace MarketShopandRetailSystem
         public int objectIndex;
         public Vector3Data position;
         public Vector3Data rotation;
+        // Optional attachment for moved shelves; older saves keep using world coordinates.
+        public string shelfName;
+        public int shelfIndex;
+        public int slotIndex;
+        public Vector3Data slotLocalPosition;
+        public Vector3Data slotLocalRotation;
 
         public SellableObjectData()
         {

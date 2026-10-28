@@ -114,11 +114,99 @@ namespace MarketShopandRetailSystem
         const float stepDeg = 45f;
 
         private ObjectPlacing currentPlacingScript;
+        private ShelfMoveSession movingShelf;
+        private readonly HashSet<Transform> productsInTransit = new HashSet<Transform>();
+        private int relocationEndFrame = -1;
+        private bool shelvesReady;
+        public bool IsMovingShelf => movingShelf != null;
+        public bool BlocksPlayerInteraction => IsMovingShelf || Time.frameCount == relocationEndFrame;
+
+        public void BeginMovingShelf(PhysicalEquipmentDetails shelf)
+        {
+            if (!ShelfMoveSession.Supports(shelf) || IsMovingShelf
+                || AdvancedGameManager.Instance.CurrentMode != Mode.Free
+                || HeroPlayerScript.Instance.isHoldingBox || GameCanvas.Instance.isPaused) return;
+            if (!shelvesReady)
+            {
+                GameCanvas.Instance.Show_Warning_Not("Wait until the shelves finish loading.", false);
+                return;
+            }
+            if (SaveLoadManager.Instance.GetPlacedObject(shelf.Name, shelf.equipmentIndex) == null)
+            {
+                GameCanvas.Instance.Show_Warning_Not("This shelf has no saved placement.", false);
+                return;
+            }
+            if (shelf.GetComponent<ArrayableArea>().PlacablePoints.Any(point => point.objectToGrab != null
+                && productsInTransit.Contains(point.objectToGrab.transform)))
+            {
+                GameCanvas.Instance.Show_Warning_Not("Wait until the products are placed.", false);
+                return;
+            }
+            movingShelf = new ShelfMoveSession(shelf);
+            wheelAcc = 0f;
+            AdvancedGameManager.Instance.CurrentMode = Mode.InInventoryLocating;
+            Panel_LocatingInfo.SetActive(true);
+            GameCanvas.Instance.Hide_GrabbingHint();
+            GameCanvas.Instance.Hide_Warning();
+            HeroPlayerScript.Instance.GrableObject = null;
+            HeroPlayerScript.Instance.InteractableObject = null;
+            GameCanvas.Instance.Show_ShelfMovingHint();
+        }
+
+        private void EndMovingShelf(bool cancel)
+        {
+            if (!cancel && !SaveLoadManager.Instance.UpdateShelfPlacement(movingShelf.Shelf))
+            {
+                GameCanvas.Instance.Show_Warning_Not("Could not save the shelf. Its original position was restored.", false);
+                cancel = true;
+            }
+            movingShelf.Finish(cancel);
+            movingShelf = null;
+            relocationEndFrame = Time.frameCount;
+            Panel_LocatingInfo.SetActive(false);
+            GameCanvas.Instance.Hide_Warning();
+            GameCanvas.Instance.Hide_GrabbingHint();
+            AdvancedGameManager.Instance.CurrentMode = Mode.Free;
+        }
+
+        private void UpdateMovingShelf()
+        {
+            if (movingShelf.Shelf == null) { EndMovingShelf(true); return; }
+            if (Camera.main == null) return;
+            if (AdvancedGameManager.Instance.controllerType == ControllerType.PC && Mouse.current != null)
+            {
+                float scroll = Mouse.current.scroll.ReadValue().y;
+                if (scroll != 0f) movingShelf.Rotate(Mathf.Sign(scroll) * stepDeg);
+            }
+            Vector3 aim = GameCanvas.Instance.Crosshair.transform.position;
+            aim.y -= HologramOffset;
+            movingShelf.Aim(Camera.main.ScreenPointToRay(aim), layermask);
+            GameCanvas.Instance.Text_Info.text = movingShelf.CanPlace
+                ? "Place shelf / Rotate / Cancel"
+                : "Choose free floor space inside the shop";
+            if (AdvancedGameManager.Instance.controllerType == ControllerType.PC
+                && AdvancedGameManager.Instance.mouseAction.WasPressedThisFrame()) Click_Button_Locate();
+        }
+
+        private void OnDisable()
+        {
+            if (movingShelf == null) return;
+            movingShelf.Finish(true);
+            movingShelf = null;
+            if (Panel_LocatingInfo != null) Panel_LocatingInfo.SetActive(false);
+            if (GameCanvas.Instance != null) GameCanvas.Instance.Hide_GrabbingHint();
+            if (AdvancedGameManager.Instance != null) AdvancedGameManager.Instance.CurrentMode = Mode.Free;
+        }
 
         public float HologramOffset = 10;
 
         private void Update()
         {
+            if (IsMovingShelf)
+            {
+                UpdateMovingShelf();
+                return;
+            }
             if (AdvancedGameManager.Instance.CurrentMode == Mode.InInventoryLocating)
             {
                 Ray ray = Camera.main.ScreenPointToRay(new Vector3(GameCanvas.Instance.Crosshair.transform.position.x, GameCanvas.Instance.Crosshair.transform.position.y - HologramOffset, GameCanvas.Instance.Crosshair.transform.position.z));
@@ -225,6 +313,7 @@ namespace MarketShopandRetailSystem
 
         private IEnumerator JumpCoroutine(Transform target, Vector3 endPosition, float duration)
         {
+            productsInTransit.Add(target);
             target.parent = null;
             target.localScale = Vector3.one;
             target.eulerAngles = Vector3.zero;
@@ -240,6 +329,7 @@ namespace MarketShopandRetailSystem
             }
 
             target.position = endPosition;
+            productsInTransit.Remove(target);
         }
 
         private IEnumerator JumpCoroutineBackToOrderBox(Transform target, PlacablePoint orderBoxItem, float duration)
@@ -262,6 +352,7 @@ namespace MarketShopandRetailSystem
 
         public void Click_Button_Rotate()
         {
+            if (IsMovingShelf) { movingShelf.Rotate(10f); return; }
             if (currentPlacingScript.GetComponent<PhysicalEquipmentDetails>().equipmentType == EquipmentType.Poster)
             {
                 CreatedObject.transform.Rotate(0.1f * Vector3.right * 100);
@@ -311,6 +402,11 @@ namespace MarketShopandRetailSystem
 
         public void Click_Button_Locate()
         {
+            if (IsMovingShelf)
+            {
+                if (movingShelf.CanPlace && movingShelf.Validate(layermask)) EndMovingShelf(false);
+                return;
+            }
             if (AdvancedGameManager.Instance.CurrentMode == Mode.InInventoryLocating)
             {
                 if (currentPlacingScript.CanLocate)
@@ -379,6 +475,7 @@ namespace MarketShopandRetailSystem
 
         public void CancelLocating()
         {
+            if (IsMovingShelf) { EndMovingShelf(true); return; }
             AdvancedGameManager.Instance.CurrentMode = Mode.Free;
             if (CreatedObject != null)
             {
@@ -492,13 +589,36 @@ namespace MarketShopandRetailSystem
 
         public IEnumerator ArrangeEverything()
         {
+            shelvesReady = false;
             yield return new WaitForSeconds(1);
             // First find all placeablePoints
             PlacablePoint[] placablePoints = GameObject.FindObjectsOfType<PlacablePoint>();
             SellableObject[] sellableObjects = GameObject.FindObjectsOfType<SellableObject>();
+            foreach (SellableObjectData saved in SaveLoadManager.Instance.GetAllSellableObjects())
+            {
+                if (string.IsNullOrEmpty(saved.shelfName) || saved.slotLocalPosition == null
+                    || saved.slotLocalRotation == null) continue;
+                PhysicalEquipmentDetails shelf = CurrentEquipmentList.Where(x => x != null)
+                    .Select(x => x.GetComponent<PhysicalEquipmentDetails>()).FirstOrDefault(x => x != null
+                        && x.Name == saved.shelfName && x.equipmentIndex == saved.shelfIndex);
+                ArrayableArea area = shelf != null ? shelf.GetComponent<ArrayableArea>() : null;
+                if (area == null || saved.slotIndex < 0 || saved.slotIndex >= area.PlacablePoints.Length) continue;
+                PlacablePoint point = area.PlacablePoints[saved.slotIndex];
+                SellableObject product = sellableObjects.FirstOrDefault(x => x.Name == saved.productName
+                    && x.sellableObjectIndex == saved.objectIndex && x.isAvailable && x.putPoint == null);
+                if (product == null || point.objectToGrab != null) continue;
+                product.transform.SetPositionAndRotation(point.transform.TransformPoint(saved.slotLocalPosition.ToVector3()),
+                    point.transform.rotation * Quaternion.Euler(saved.slotLocalRotation.ToVector3()));
+                point.isAvailable = false;
+                point.objectToGrab = product.gameObject;
+                product.putPoint = point;
+                point.Floor.SetPriceDetails(product);
+            }
             for (int i = 0; i < placablePoints.Length; i++)
             {
-                var found = sellableObjects.Where(x => x.transform.position == placablePoints[i].transform.position && x.isAvailable).FirstOrDefault();
+                if (placablePoints[i].objectToGrab != null) continue;
+                var found = sellableObjects.Where(x => (x.transform.position - placablePoints[i].transform.position).sqrMagnitude < 0.0001f
+                    && x.isAvailable && x.putPoint == null).FirstOrDefault();
                 if (found != null)
                 {
                     placablePoints[i].isAvailable = false;
@@ -507,6 +627,7 @@ namespace MarketShopandRetailSystem
                     placablePoints[i].Floor.SetPriceDetails(found);
                 }
             }
+            shelvesReady = true;
         }
 
 

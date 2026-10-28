@@ -297,6 +297,43 @@ namespace MarketShopandRetailSystem
             SaveGame();
         }
 
+        public bool UpdateShelfPlacement(PhysicalEquipmentDetails shelf)
+        {
+            EnsureInitialized();
+            PlacedObjectData placed = GetPlacedObject(shelf.Name, shelf.equipmentIndex);
+            if (placed == null) return false;
+            PlacablePoint[] points = shelf.GetComponent<ArrayableArea>().PlacablePoints;
+            // Validate all records before changing any of them. Never allocate new product IDs here.
+            foreach (PlacablePoint point in points)
+            {
+                if (point.objectToGrab == null) continue;
+                SellableObject product = point.objectToGrab.GetComponent<SellableObject>();
+                if (product == null || !currentSaveData.sellableObjects.Exists(x =>
+                    x.productName == product.Name && x.objectIndex == product.sellableObjectIndex)) return false;
+            }
+
+            placed.position = new Vector3Data(shelf.transform.position);
+            placed.rotation = new Vector3Data(shelf.transform.eulerAngles);
+            placed.scale = new Vector3Data(shelf.transform.localScale);
+            foreach (PlacablePoint point in points)
+            {
+                if (point.objectToGrab == null) continue;
+                SellableObject product = point.objectToGrab.GetComponent<SellableObject>();
+                SellableObjectData record = currentSaveData.sellableObjects.Find(x =>
+                    x.productName == product.Name && x.objectIndex == product.sellableObjectIndex);
+                record.position = new Vector3Data(product.transform.position);
+                record.rotation = new Vector3Data(product.transform.eulerAngles);
+                record.shelfName = shelf.Name;
+                record.shelfIndex = shelf.equipmentIndex;
+                record.slotIndex = point.ID;
+                record.slotLocalPosition = new Vector3Data(point.transform.InverseTransformPoint(product.transform.position));
+                record.slotLocalRotation = new Vector3Data((Quaternion.Inverse(point.transform.rotation)
+                    * product.transform.rotation).eulerAngles);
+            }
+            SaveGame();
+            return true;
+        }
+
         public PlacedObjectData GetPlacedObject(string equipmentName, int objectIndex)
         {
             EnsureInitialized();
