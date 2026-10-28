@@ -13,6 +13,30 @@ namespace MarketShopandRetailSystem
         private SpriteRenderer spriteRenderer;
         [HideInInspector]
         public Rigidbody Rigidbody_Placing;
+        private readonly HashSet<Material> previewMaterials = new HashSet<Material>();
+
+        public void ConfigureRelocationPreview()
+        {
+            CacheComponents();
+            foreach (MeshRenderer renderer in meshRenderers)
+            {
+                Material[] copies = renderer.sharedMaterials;
+                for (int i = 0; i < copies.Length; i++)
+                {
+                    copies[i] = new Material(copies[i]);
+                    copies[i].EnableKeyword("_EMISSION");
+                    previewMaterials.Add(copies[i]);
+                }
+                renderer.sharedMaterials = copies;
+            }
+        }
+
+        private void CacheComponents()
+        {
+            meshRenderers = GetComponentsInChildren<MeshRenderer>(true);
+            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+            Rigidbody_Placing = GetComponent<Rigidbody>();
+        }
 
 
         public void OnTriggerEnter(Collider other)
@@ -42,17 +66,46 @@ namespace MarketShopandRetailSystem
         {
             list.Clear();
             isTriggeringCorrect = false;
+            CanLocate = false;
+        }
+
+        public bool CanConfirmPlacement()
+        {
+            if (!isActiveAndEnabled || !CanLocate) return false;
+            if (GetComponent<PhysicalEquipmentDetails>().equipmentType == EquipmentType.Poster) return true;
+            Physics.SyncTransforms();
+            bool insideShop = false;
+            foreach (BoxCollider box in GetComponents<BoxCollider>())
+            {
+                if (!box.enabled) continue;
+                Vector3 scale = box.transform.lossyScale;
+                scale = new Vector3(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
+                Vector3 half = Vector3.Scale(box.size, scale) * 0.5f;
+                half = new Vector3(Mathf.Max(0.001f, half.x - 0.015f), Mathf.Max(0.001f, half.y - 0.015f),
+                    Mathf.Max(0.001f, half.z - 0.015f));
+                foreach (Collider other in Physics.OverlapBox(box.transform.TransformPoint(box.center), half,
+                    box.transform.rotation, ~0, QueryTriggerInteraction.Collide))
+                {
+                    if (other.transform.IsChildOf(transform)) continue;
+                    if (other.CompareTag("Shop")) insideShop = true;
+                    else if (!other.isTrigger && !other.CompareTag("Player") && other.name != "Trigger") return false;
+                }
+            }
+            return insideShop;
         }
 
         private void Start()
         {
-            meshRenderers = GetComponentsInChildren<MeshRenderer>();
-            spriteRenderer = GetComponentInChildren<SpriteRenderer>();
-            Rigidbody_Placing = GetComponent<Rigidbody>();
+            CacheComponents();
         }
 
         private void OnTriggerStay(Collider other)
         {
+            if (GetComponent<PhysicalEquipmentDetails>().equipmentType != EquipmentType.Poster)
+            {
+                OnTriggerEnter(other);
+                return;
+            }
             if (GetComponent<PhysicalEquipmentDetails>().equipmentType == EquipmentType.Poster)
             {
                 if (other.CompareTag("Wall"))
@@ -103,7 +156,7 @@ namespace MarketShopandRetailSystem
                     Material[] materials = item.materials;
                     for (int i = 0; i < materials.Length; i++)
                     {
-                        materials[i].SetColor("_EmissionColor", Color.red);
+                        if (materials[i].HasProperty("_EmissionColor")) materials[i].SetColor("_EmissionColor", Color.red);
                     }
                     item.materials = materials;
                 }
@@ -142,16 +195,17 @@ namespace MarketShopandRetailSystem
                     }
                     foreach (var item in meshRenderers)
                     {
+                        if (item == null) continue;
                         Material[] materials = item.materials;
                         for (int i = 0; i < materials.Length; i++)
                         {
                             if (CanLocate)
                             {
-                                materials[i].SetColor("_EmissionColor", Color.green);
+                                if (materials[i].HasProperty("_EmissionColor")) materials[i].SetColor("_EmissionColor", Color.green);
                             }
                             else
                             {
-                                materials[i].SetColor("_EmissionColor", Color.red);
+                                if (materials[i].HasProperty("_EmissionColor")) materials[i].SetColor("_EmissionColor", Color.red);
                             }
                         }
                         item.materials = materials;
@@ -163,7 +217,8 @@ namespace MarketShopandRetailSystem
 
         private void OnDestroy()
         {
-            if (GetComponent<PhysicalEquipmentDetails>().equipmentType == EquipmentType.Poster)
+            PhysicalEquipmentDetails detail = GetComponent<PhysicalEquipmentDetails>();
+            if (detail != null && detail.equipmentType == EquipmentType.Poster)
             {
                 if (spriteRenderer == null) return;
                 spriteRenderer.color = Color.white;
@@ -173,6 +228,7 @@ namespace MarketShopandRetailSystem
                 if (meshRenderers == null) return;
                 foreach (var item in meshRenderers)
                 {
+                    if (item == null) continue;
                     Material[] materials = item.materials;
                     for (int i = 0; i < materials.Length; i++)
                     {
@@ -182,6 +238,9 @@ namespace MarketShopandRetailSystem
                 }
             }
             list.Clear();
+            foreach (Material material in previewMaterials)
+                if (material != null) Destroy(material);
+            previewMaterials.Clear();
         }
     }
 }

@@ -21,6 +21,7 @@ namespace MarketShopandRetailSystem
 
         public KeyCode InteractingKey;
         public KeyCode GrabbingKey;
+        public KeyCode RelocatingKey = KeyCode.R;
         public KeyCode SelectionKey;
         public KeyCode MapKey;
         [Range(0, 100)]
@@ -67,6 +68,7 @@ namespace MarketShopandRetailSystem
         public InputAction jumpAction;
         public InputAction interactAction;
         public InputAction grabbingAction;
+        public InputAction relocatingAction;
         public InputAction selectionAction;
         public InputAction mapAction;
         public InputAction mouseAction;
@@ -128,6 +130,13 @@ namespace MarketShopandRetailSystem
                 grabbingAction.AddBinding("<Gamepad>/rightTrigger");
             }
             grabbingAction.Enable();
+
+            if (relocatingAction == null || relocatingAction.bindings.Count == 0)
+            {
+                relocatingAction = new InputAction(type: InputActionType.Button, binding: "<Keyboard>/" + RelocatingKey.ToString());
+                relocatingAction.AddBinding("<Gamepad>/leftShoulder");
+            }
+            relocatingAction.Enable();
 
             if (mapAction == null || mapAction.bindings.Count == 0)
             {

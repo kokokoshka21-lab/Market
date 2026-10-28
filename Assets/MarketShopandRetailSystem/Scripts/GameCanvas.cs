@@ -37,6 +37,7 @@ namespace MarketShopandRetailSystem
         public Text Text_Experience;
 
         public Text Text_GrabHint;
+        public Text Text_MoveHint;
 
         public GameObject[] Panels_Mobile;
         public GameObject Button_Interact;
@@ -275,11 +276,26 @@ namespace MarketShopandRetailSystem
                 Text_GrabHint.text = "GRAB";
             }
             Text_GrabHint.gameObject.SetActive(true);
+            if (Text_MoveHint != null)
+            {
+                Text_MoveHint.text = AdvancedGameManager.Instance.controllerType == ControllerType.PC
+                    ? AdvancedGameManager.Instance.RelocatingKey.ToString() + " TO MOVE" : "MOVE";
+                Text_MoveHint.gameObject.SetActive(ShelfRelocation.Supports(HeroPlayerScript.Instance.GrableObject));
+            }
         }
 
         public void Hide_GrabbingHint()
         {
             Text_GrabHint.gameObject.SetActive(false);
+            if (Text_MoveHint != null) Text_MoveHint.gameObject.SetActive(false);
+        }
+
+        public void Show_ShelfMovingHint()
+        {
+            if (Text_MoveHint == null) return;
+            Text_MoveHint.text = AdvancedGameManager.Instance.controllerType == ControllerType.PC
+                ? "ESC TO CANCEL" : "CANCEL MOVE";
+            Text_MoveHint.gameObject.SetActive(true);
         }
 
         float lastTabClick = 0;

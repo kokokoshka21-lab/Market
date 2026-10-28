@@ -35,6 +35,8 @@ namespace MarketShopandRetailSystem
         public IEnumerator Switch_Hand_InTime(Hand_Type hand_Type, float second)
         {
             yield return new WaitForSeconds(second);
+            if (hand_Type == Hand_Type.Free
+                && AdvancedGameManager.Instance.CurrentMode == Mode.InInventoryLocating) yield break;
             Switch_Hand(hand_Type);
         }
 
