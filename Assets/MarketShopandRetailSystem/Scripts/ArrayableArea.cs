@@ -14,6 +14,7 @@ namespace MarketShopandRetailSystem
         private void Awake()
         {
             detail = GetComponent<PhysicalEquipmentDetails>();
+            OrderBox = GetComponent<OrderBox>();
             for (int i = 0; i < PlacablePoints.Length; i++)
             {
                 PlacablePoints[i].ID = i;
@@ -22,6 +23,9 @@ namespace MarketShopandRetailSystem
 
         IEnumerator Start()
         {
+            OrderBox = GetComponent<OrderBox>();
+            // OrderBox restores product identities itself, including legacy empty-slot flags.
+            if (OrderBox != null) yield break;
             yield return new WaitForSeconds(0.5f);
             detail = GetComponent<PhysicalEquipmentDetails>();
             int objectID = detail.equipmentIndex;
@@ -39,6 +43,14 @@ namespace MarketShopandRetailSystem
 
         public void RemoveItem(int i)
         {
+            if (OrderBox != null)
+            {
+                PlacablePoints[i].isAvailable = true;
+                PlacablePoints[i].objectToGrab = null;
+                OrderBox.SaveContents();
+                OrderBox.RefreshContentsDisplay();
+                return;
+            }
             int objectID = detail.equipmentIndex;
             SaveLoadManager.Instance.SetShelfSlotStatus(detail.Name, objectID, i, -1);
             PlacablePoints[i].isAvailable = true;

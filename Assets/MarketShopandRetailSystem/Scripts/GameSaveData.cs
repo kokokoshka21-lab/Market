@@ -74,6 +74,8 @@ namespace MarketShopandRetailSystem
         public Vector3Data rotation;
         public Vector3Data scale;
         public List<ShelfSlotData> shelfSlots = new List<ShelfSlotData>(); // For shelves/displays
+        public bool hasBoxContents;
+        public List<BoxSlotData> boxContents = new List<BoxSlotData>();
 
         public PlacedObjectData()
         {
@@ -103,6 +105,13 @@ namespace MarketShopandRetailSystem
             position = new Vector3Data();
             rotation = new Vector3Data();
         }
+    }
+
+    [Serializable]
+    public class BoxSlotData
+    {
+        public int slotIndex;
+        public string productName;
     }
 
     [Serializable]

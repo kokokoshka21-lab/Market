@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
@@ -10,7 +11,9 @@ namespace MarketShopandRetailSystem
         public bool isHolding = false;
         public Rigidbody rigidbody;
         private Vector3 initialSize;
+        [Tooltip("Initial shipment product only. This box can accept any product after delivery.")]
         public GameObject sellableObjectPrefab;
+        public bool ContentsReady { get; private set; }
         public ArrayableArea arrayableArea;
         public Animation animation;
         public Collider collider;
@@ -21,42 +24,103 @@ namespace MarketShopandRetailSystem
         void Start()
         {
             rigidbody = GetComponent<Rigidbody>();
-            initialSize = new Vector3(transform.localScale.x, transform.localScale.y, transform.localScale.z);
-            if (sellableObjectPrefab != null)
+            initialSize = transform.localScale;
+            if (arrayableArea == null) arrayableArea = GetComponent<ArrayableArea>();
+            PhysicalEquipmentDetails detail = GetComponent<PhysicalEquipmentDetails>();
+            PlacedObjectData saved = SaveLoadManager.Instance.GetPlacedObject(detail.Name, detail.equipmentIndex);
+            var contents = new List<BoxSlotData>();
+            if (saved != null && saved.hasBoxContents)
             {
-                for (int i = 0; i < arrayableArea.PlacablePoints.Length; i++)
-                {
-                    GameObject item = Instantiate(sellableObjectPrefab, arrayableArea.PlacablePoints[i].transform.position, Quaternion.identity, transform);
-                    item.transform.localEulerAngles = Vector3.zero;
-                    arrayableArea.PlacablePoints[i].objectToGrab = item;
-                    arrayableArea.PlacablePoints[i].isAvailable = false;
-                    item.GetComponent<SellableObject>().isAvailable = false;
-                }
-                StartCoroutine(CheckTheSlots(1));
-                spriteProduct.sprite = sellableObjectPrefab.GetComponent<SellableObject>().sprite;
-                textCount.text = arrayableArea.PlacablePoints.Count().ToString();
+                if (saved.boxContents != null) contents.AddRange(saved.boxContents);
             }
+            else if (sellableObjectPrefab != null)
+            {
+                // Migrate old saves once; a saved empty box must never refill from its shipment prefab.
+                string productName = sellableObjectPrefab.GetComponent<SellableObject>().Name;
+                for (int i = 0; i < arrayableArea.PlacablePoints.Length; i++)
+                    if (SaveLoadManager.Instance.GetShelfSlotStatus(detail.Name, detail.equipmentIndex, i, 0) != -1)
+                        contents.Add(new BoxSlotData { slotIndex = i, productName = productName });
+            }
+            var used = new HashSet<int>();
+            foreach (BoxSlotData slot in contents)
+            {
+                if (slot.slotIndex < 0 || slot.slotIndex >= arrayableArea.PlacablePoints.Length
+                    || !used.Add(slot.slotIndex) || FindProductPrefab(slot.productName) == null)
+                {
+                    Debug.LogError("Cannot restore box contents: invalid slot or missing product " + slot.productName);
+                    if (textCount != null) textCount.text = "?";
+                    return; // Preserve the save rather than replacing an unknown product with another type.
+                }
+            }
+            foreach (PlacablePoint point in arrayableArea.PlacablePoints)
+            {
+                point.objectToGrab = null;
+                point.isAvailable = true;
+            }
+            foreach (BoxSlotData slot in contents)
+            {
+                PlacablePoint point = arrayableArea.PlacablePoints[slot.slotIndex];
+                GameObject prefab = FindProductPrefab(slot.productName);
+                GameObject item = Instantiate(prefab, point.transform.position,
+                    transform.rotation, transform);
+                item.transform.localScale = prefab.transform.localScale;
+                item.transform.localRotation = Quaternion.identity;
+                SellableObject product = item.GetComponent<SellableObject>();
+                product.isAvailable = false;
+                product.putPoint = null;
+                product.sellableObjectIndex = -1;
+                point.objectToGrab = item;
+                point.isAvailable = false;
+            }
+            ContentsReady = true;
+            RefreshContentsDisplay();
+            if (saved != null && !saved.hasBoxContents) SaveContents();
         }
 
-        public void AddItemBack()
+        private GameObject FindProductPrefab(string productName)
         {
-            if (sellableObjectPrefab != null)
+            if (string.IsNullOrEmpty(productName)) return null;
+            SellableObject product = InventoryManager.Instance != null && InventoryManager.Instance.SellableObjects != null
+                ? InventoryManager.Instance.SellableObjects.FirstOrDefault(x => x != null && x.Name == productName) : null;
+            if (product != null) return product.gameObject;
+            return sellableObjectPrefab != null && sellableObjectPrefab.GetComponent<SellableObject>().Name == productName
+                ? sellableObjectPrefab : null;
+        }
+
+        public bool SaveContents()
+        {
+            if (!ContentsReady) return false;
+            var contents = new List<BoxSlotData>();
+            for (int i = 0; i < arrayableArea.PlacablePoints.Length; i++)
             {
-                var availableEmptySlot = arrayableArea.PlacablePoints.Where(x => x.isAvailable && x.objectToGrab == null).FirstOrDefault();
-                GameObject item = Instantiate(sellableObjectPrefab, availableEmptySlot.transform.position, Quaternion.identity, transform);
-                item.transform.localEulerAngles = Vector3.zero;
-                availableEmptySlot.objectToGrab = item;
-                availableEmptySlot.isAvailable = false;
-                item.GetComponent<SellableObject>().isAvailable = false;
-                StartCoroutine(CheckTheSlots(1));
-                spriteProduct.sprite = sellableObjectPrefab.GetComponent<SellableObject>().sprite;
-                textCount.text = arrayableArea.PlacablePoints.Count().ToString();
-                SaveLoadManager.Instance.SetShelfSlotStatus(
-                    GetComponent<PhysicalEquipmentDetails>().Name,
-                    GetComponent<PhysicalEquipmentDetails>().equipmentIndex,
-                    Array.IndexOf(arrayableArea.PlacablePoints, availableEmptySlot),
-                    0
-                );
+                GameObject item = arrayableArea.PlacablePoints[i].objectToGrab;
+                if (item != null) contents.Add(new BoxSlotData { slotIndex = i, productName = item.GetComponent<SellableObject>().Name });
+            }
+            PhysicalEquipmentDetails detail = GetComponent<PhysicalEquipmentDetails>();
+            return SaveLoadManager.Instance.SaveBoxContents(detail.Name, detail.equipmentIndex, contents);
+        }
+
+        public bool CanStoreProduct(SellableObject product)
+        {
+            return ContentsReady && product != null && FindProductPrefab(product.Name) != null;
+        }
+
+        public Vector3 GetProductScale(SellableObject product)
+        {
+            GameObject prefab = FindProductPrefab(product.Name);
+            return prefab != null ? prefab.transform.localScale : Vector3.one;
+        }
+
+        public void RefreshContentsDisplay()
+        {
+            SellableObject[] contents = arrayableArea.PlacablePoints.Where(x => x.objectToGrab != null)
+                .Select(x => x.objectToGrab.GetComponent<SellableObject>()).Where(x => x != null).ToArray();
+            if (textCount != null) textCount.text = contents.Length.ToString();
+            if (spriteProduct != null)
+            {
+                bool homogeneous = contents.Length > 0 && contents.All(x => x.Name == contents[0].Name);
+                spriteProduct.enabled = homogeneous;
+                spriteProduct.sprite = homogeneous ? contents[0].sprite : null;
             }
         }
 
@@ -76,33 +140,17 @@ namespace MarketShopandRetailSystem
         public IEnumerator CheckTheSlots(int time)
         {
             yield return new WaitForSeconds(time);
-            // Let's check the slots:
-            var anySellableProduct = arrayableArea.PlacablePoints.Where(x => !x.isAvailable).FirstOrDefault();
-            if (anySellableProduct == null)
-            {
-                textCount.text = "0";
-            }
-            else
-            {
-                textCount.text = arrayableArea.PlacablePoints.Where(x => !x.isAvailable).Count().ToString();
-            }
+            RefreshContentsDisplay();
         }
 
         public bool isEmpty()
         {
-            var anySellableProduct = arrayableArea.PlacablePoints.Where(x => !x.isAvailable).FirstOrDefault();
-            if (anySellableProduct != null)
-            {
-                return false;
-            }
-            else
-            {
-                return true;
-            }
+            return arrayableArea.PlacablePoints.All(x => x.objectToGrab == null);
         }
 
         public void Interact()
         {
+            if (!ContentsReady) return;
             if (!isHolding && !HeroPlayerScript.Instance.isHoldingBox)
             {
                 isHolding = true;

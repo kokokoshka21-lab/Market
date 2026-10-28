@@ -302,43 +302,33 @@ namespace MarketShopandRetailSystem
 
         float lastTimeLocating = 0;
 
-        private IEnumerator JumpCoroutine(Transform target, Vector3 endPosition, float duration)
+        private IEnumerator TransferProduct(SellableObject product, PlacablePoint destination, bool intoBox, Vector3 scale)
         {
+            Transform target = product.transform;
             productsInTransit.Add(target);
-            target.parent = null;
-            target.localScale = Vector3.one;
-            target.eulerAngles = Vector3.zero;
-            Vector3 startPosition = target.position;
-            float elapsedTime = 0f;
-
-            while (elapsedTime < duration)
+            try
             {
-                float progress = elapsedTime / duration;
-                target.position = Vector3.Lerp(startPosition, endPosition, progress);
-                elapsedTime += Time.deltaTime;
-                yield return null;
+                target.SetParent(intoBox ? destination.GetComponentInParent<OrderBox>().transform : null, true);
+                target.localScale = scale;
+                target.rotation = intoBox ? target.parent.rotation : destination.transform.rotation;
+                Vector3 startPosition = target.position;
+                float elapsed = 0f;
+                while (target != null && destination != null && elapsed < 0.25f)
+                {
+                    target.position = Vector3.Lerp(startPosition, destination.transform.position, elapsed / 0.25f);
+                    elapsed += Time.deltaTime;
+                    yield return null;
+                }
+                if (target != null && destination != null)
+                {
+                    target.position = destination.transform.position;
+                    if (!intoBox && destination.objectToGrab == product.gameObject) product.isAvailable = true;
+                }
             }
-
-            target.position = endPosition;
-            productsInTransit.Remove(target);
-        }
-
-        private IEnumerator JumpCoroutineBackToOrderBox(Transform target, PlacablePoint orderBoxItem, float duration)
-        {
-            target.parent = orderBoxItem.transform.parent;
-            target.localScale = Vector3.one;
-            target.eulerAngles = Vector3.zero;
-            Vector3 startPosition = target.position;
-            float elapsedTime = 0f;
-
-            while (elapsedTime < duration)
+            finally
             {
-                float progress = elapsedTime / duration;
-                target.position = Vector3.Lerp(startPosition, orderBoxItem.transform.position, progress);
-                elapsedTime += Time.deltaTime;
-                yield return null;
+                productsInTransit.Remove(target);
             }
-            Destroy(target.gameObject);
         }
 
         public void Click_Button_Rotate()
@@ -356,40 +346,78 @@ namespace MarketShopandRetailSystem
 
         public void Click_Button_GetBackToOrderBox()
         {
-            if (AdvancedGameManager.Instance.CurrentMode == Mode.HoldingForOrdering)
-            {
-                // Let's check do we have any empty area in our basket?
-                var availableItem = CurrentOrderBox.GetComponent<ArrayableArea>().PlacablePoints.Where(x => x.isAvailable && x.objectToGrab == null).FirstOrDefault();
-                if (availableItem == null) return;
+            if (AdvancedGameManager.Instance.CurrentMode != Mode.HoldingForOrdering
+                || CurrentOrderBox == null || !CurrentOrderBox.ContentsReady) return;
+            PlacablePoint destination = CurrentOrderBox.arrayableArea.PlacablePoints
+                .FirstOrDefault(x => x.objectToGrab == null && x.isAvailable);
+            if (destination == null) return;
+            PlacablePoint source = TriggerScript.Instance.placablePoints.FirstOrDefault(x => x != null
+                && !x.isAvailable && x.objectToGrab != null
+                && x.GetComponentInParent<OrderBox>() == null
+                && !productsInTransit.Contains(x.objectToGrab.transform));
+            if (source == null) return;
+            SellableObject product = source.objectToGrab.GetComponent<SellableObject>();
+            if (!CurrentOrderBox.CanStoreProduct(product)) return;
+            PhysicalEquipmentDetails shelf = source.GetComponentInParent<PhysicalEquipmentDetails>();
+            PhysicalEquipmentDetails box = CurrentOrderBox.GetComponent<PhysicalEquipmentDetails>();
+            if (shelf == null || !SaveLoadManager.Instance.MoveShelfProductToBox(shelf.Name, shelf.equipmentIndex,
+                source.ID, product.Name, product.sellableObjectIndex, box.Name, box.equipmentIndex, destination.ID)) return;
 
-                // Let's check is there any item close to us?
-                var availablePlace = TriggerScript.Instance.placablePoints.Where(x => !x.isAvailable && x.objectToGrab != null).FirstOrDefault();
-                if (availablePlace == null) return;
-
-                // Find the parent!
-                Transform parent = availablePlace.transform;
-                // Get all PlacablePoints Of Parent
-                PlacablePoint[] allPlaceablePointsOfCurrentFloor = parent.GetComponentsInChildren<PlacablePoint>();
-                // Check do we have a different kind of Sellable Object?
-                var differentObject = allPlaceablePointsOfCurrentFloor.Where(x => x.objectToGrab != null && x.objectToGrab.GetComponent<SellableObject>().Name != CurrentOrderBox.sellableObjectPrefab.GetComponent<SellableObject>().Name).FirstOrDefault();
-                if (differentObject != null)
-                {
-                    return;
-                }
-
-                // If both of them are YES! Relocate it to OrderBox!
-                StartCoroutine(JumpCoroutineBackToOrderBox(availablePlace.objectToGrab.gameObject.transform, availableItem, 0.25f));
-                AudioManager.Instance.Play_audioClip_Locate();
-
-                // Lets remove it!
-                CurrentOrderBox.AddItemBack();
-                availablePlace.GetComponentInParent<ArrayableArea>().RemoveItemFromSelftForPuttingOrderBox(availablePlace);
-                availablePlace.isAvailable = true;
-                availablePlace.objectToGrab = null;
-
-            }
+            source.objectToGrab = null;
+            source.isAvailable = true;
+            destination.objectToGrab = product.gameObject;
+            destination.isAvailable = false;
+            product.isAvailable = false;
+            product.putPoint = null;
+            product.sellableObjectIndex = -1;
+            CurrentEquipmentList.Remove(product.gameObject);
+            if (source.Floor != null) source.Floor.CheckPriceOnTag();
+            StartCoroutine(TransferProduct(product, destination, true, CurrentOrderBox.GetProductScale(product)));
+            CurrentOrderBox.RefreshContentsDisplay();
+            AudioManager.Instance.Play_audioClip_Locate();
         }
 
+        private bool CanStockProduct(SellableObject product, PlacablePoint point)
+        {
+            if (point == null || !point.isAvailable || point.objectToGrab != null || point.Floor == null
+                || point.GetComponentInParent<OrderBox>() != null) return false;
+            ArrayableArea area = point.GetComponentInParent<ArrayableArea>();
+            return area != null && area.storageType.HasFlag(product.storageType)
+                && !area.PlacablePoints.Any(x => x.Floor == point.Floor && x.objectToGrab != null
+                    && x.objectToGrab.GetComponent<SellableObject>().Name != product.Name);
+        }
+
+        private void StockFromCurrentBox()
+        {
+            if (CurrentOrderBox == null || !CurrentOrderBox.ContentsReady) return;
+            foreach (PlacablePoint source in CurrentOrderBox.arrayableArea.PlacablePoints)
+            {
+                if (source.objectToGrab == null || productsInTransit.Contains(source.objectToGrab.transform)) continue;
+                SellableObject product = source.objectToGrab.GetComponent<SellableObject>();
+                if (product == null) continue;
+                PlacablePoint destination = TriggerScript.Instance.placablePoints.FirstOrDefault(x => CanStockProduct(product, x));
+                if (destination == null) continue; // A later slot in a mixed box may contain a compatible product.
+                PhysicalEquipmentDetails shelf = destination.GetComponentInParent<PhysicalEquipmentDetails>();
+                PhysicalEquipmentDetails box = CurrentOrderBox.GetComponent<PhysicalEquipmentDetails>();
+                if (shelf == null || !SaveLoadManager.Instance.MoveBoxProductToShelf(box.Name, box.equipmentIndex,
+                    source.ID, product.Name, shelf.Name, shelf.equipmentIndex, destination.ID,
+                    destination.transform.position, destination.transform.eulerAngles, out int productIndex)) return;
+
+                source.objectToGrab = null;
+                source.isAvailable = true;
+                destination.objectToGrab = product.gameObject;
+                destination.isAvailable = false;
+                product.sellableObjectIndex = productIndex;
+                product.putPoint = destination;
+                product.isAvailable = false;
+                destination.Floor.SetPriceDetails(product);
+                if (!CurrentEquipmentList.Contains(product.gameObject)) CurrentEquipmentList.Add(product.gameObject);
+                StartCoroutine(TransferProduct(product, destination, false, CurrentOrderBox.GetProductScale(product)));
+                CurrentOrderBox.RefreshContentsDisplay();
+                AudioManager.Instance.Play_audioClip_Locate();
+                return;
+            }
+        }
 
         public void Click_Button_Locate()
         {
@@ -420,44 +448,7 @@ namespace MarketShopandRetailSystem
             }
             else if (AdvancedGameManager.Instance.CurrentMode == Mode.HoldingForOrdering)
             {
-                // Let's check do we have any in our basket?
-                var availableItem = CurrentOrderBox.GetComponent<ArrayableArea>().PlacablePoints.Where(x => !x.isAvailable && x.objectToGrab != null).FirstOrDefault();
-                if (availableItem == null) return;
-
-                // Let's check is there any empty area close to us?
-                var availablePlace = TriggerScript.Instance.placablePoints.Where(x => x.isAvailable && x.objectToGrab == null).FirstOrDefault();
-                if (availablePlace == null) return;
-
-                // Find the parent!
-                Transform parent = availablePlace.transform.parent;
-                // Get all PlacablePoints Of Parent
-                PlacablePoint[] allPlaceablePointsOfCurrentFloor = parent.GetComponentsInChildren<PlacablePoint>();
-                // Check do we have a different kind of Sellable Object?
-                var differentObject = allPlaceablePointsOfCurrentFloor.Where(x => x.objectToGrab != null && x.objectToGrab.GetComponent<SellableObject>().Name != availableItem.objectToGrab.GetComponent<SellableObject>().Name).FirstOrDefault();
-                if (differentObject != null)
-                {
-                    return;
-                }
-
-                if (!availablePlace.GetComponentInParent<ArrayableArea>().storageType.HasFlag(availableItem.objectToGrab.GetComponent<SellableObject>().storageType))
-                {
-                    GameCanvas.Instance.Show_Warning_Not("You can't place this product here!", false);
-                    return;
-                }
-
-                availablePlace.Floor.SetPriceDetails(availableItem.objectToGrab.GetComponent<SellableObject>());
-
-                // If both of them are YES! Locate it!
-                StartCoroutine(JumpCoroutine(availableItem.objectToGrab.gameObject.transform, availablePlace.transform.position, 0.25f));
-                AudioManager.Instance.Play_audioClip_Locate();
-                // Lets save it!
-
-                availablePlace.MainContainer.GetComponent<ArrayableArea>().AddItem(availablePlace.ID, availableItem.objectToGrab.GetComponent<SellableObject>());
-                availablePlace.isAvailable = false;
-                availablePlace.objectToGrab = availableItem.objectToGrab;
-
-                CurrentOrderBox.GetComponent<ArrayableArea>().RemoveItem(availableItem.ID);
-                StartCoroutine(CurrentOrderBox.CheckTheSlots(0));
+                StockFromCurrentBox();
             }
         }
 

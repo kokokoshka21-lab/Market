@@ -552,21 +552,82 @@ namespace MarketShopandRetailSystem
         }
 
         // Shelf slot operations
+        public bool SaveBoxContents(string boxName, int boxIndex, List<BoxSlotData> contents)
+        {
+            EnsureInitialized();
+            PlacedObjectData box = GetPlacedObject(boxName, boxIndex);
+            if (box == null) return false;
+            var slots = new HashSet<int>();
+            var copy = new List<BoxSlotData>();
+            foreach (BoxSlotData slot in contents)
+            {
+                if (slot.slotIndex < 0 || string.IsNullOrEmpty(slot.productName) || !slots.Add(slot.slotIndex)) return false;
+                copy.Add(new BoxSlotData { slotIndex = slot.slotIndex, productName = slot.productName });
+            }
+            box.hasBoxContents = true;
+            box.boxContents = copy;
+            SaveGame();
+            return true;
+        }
+
+        public bool MoveShelfProductToBox(string shelfName, int shelfIndex, int shelfSlot,
+            string productName, int productIndex, string boxName, int boxIndex, int boxSlot)
+        {
+            EnsureInitialized();
+            PlacedObjectData shelf = GetPlacedObject(shelfName, shelfIndex);
+            PlacedObjectData box = GetPlacedObject(boxName, boxIndex);
+            SellableObjectData product = currentSaveData.sellableObjects.Find(x =>
+                x.productName == productName && x.objectIndex == productIndex);
+            if (shelf == null || box == null || shelf == box || !box.hasBoxContents || box.boxContents == null
+                || product == null || shelfSlot < 0 || boxSlot < 0
+                || box.boxContents.Exists(x => x.slotIndex == boxSlot)) return false;
+            currentSaveData.sellableObjects.Remove(product);
+            SetSlotStatus(shelf, shelfSlot, -1);
+            box.boxContents.Add(new BoxSlotData { slotIndex = boxSlot, productName = productName });
+            SaveGame();
+            return true;
+        }
+
+        public bool MoveBoxProductToShelf(string boxName, int boxIndex, int boxSlot, string productName,
+            string shelfName, int shelfIndex, int shelfSlot, Vector3 position, Vector3 rotation, out int productIndex)
+        {
+            EnsureInitialized();
+            productIndex = -1;
+            PlacedObjectData box = GetPlacedObject(boxName, boxIndex);
+            PlacedObjectData shelf = GetPlacedObject(shelfName, shelfIndex);
+            BoxSlotData content = box != null && box.boxContents != null
+                ? box.boxContents.Find(x => x.slotIndex == boxSlot && x.productName == productName) : null;
+            if (box == null || shelf == null || box == shelf || !box.hasBoxContents || content == null || shelfSlot < 0) return false;
+            foreach (SellableObjectData existing in currentSaveData.sellableObjects)
+                if (existing.productName == productName) productIndex = Math.Max(productIndex, existing.objectIndex);
+            productIndex++;
+            currentSaveData.sellableObjects.Add(new SellableObjectData {
+                productName = productName, objectIndex = productIndex,
+                position = new Vector3Data(position), rotation = new Vector3Data(rotation),
+                shelfName = shelfName, shelfIndex = shelfIndex, slotIndex = shelfSlot,
+                slotLocalPosition = new Vector3Data(), slotLocalRotation = new Vector3Data()
+            });
+            box.boxContents.Remove(content);
+            SetSlotStatus(shelf, shelfSlot, 1);
+            SaveGame();
+            return true;
+        }
+
+        private static void SetSlotStatus(PlacedObjectData placed, int index, int status)
+        {
+            if (placed.shelfSlots == null) placed.shelfSlots = new List<ShelfSlotData>();
+            ShelfSlotData slot = placed.shelfSlots.Find(x => x.slotIndex == index);
+            if (slot == null) placed.shelfSlots.Add(new ShelfSlotData { slotIndex = index, status = status });
+            else slot.status = status;
+        }
+
         public void SetShelfSlotStatus(string equipmentName, int objectIndex, int slotIndex, int status)
         {
             EnsureInitialized();
             var obj = GetPlacedObject(equipmentName, objectIndex);
             if (obj != null)
             {
-                var slot = obj.shelfSlots.Find(x => x.slotIndex == slotIndex);
-                if (slot != null)
-                {
-                    slot.status = status;
-                }
-                else
-                {
-                    obj.shelfSlots.Add(new ShelfSlotData { slotIndex = slotIndex, status = status });
-                }
+                SetSlotStatus(obj, slotIndex, status);
                 SaveGame();
             }
         }
