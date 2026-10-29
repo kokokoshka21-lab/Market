@@ -4088,7 +4088,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   equipmentIndex: 1
-  Name: Cast Register
+  Name: Self-Service Checkout
   equipmentType: 0
   Price: 500
   Experience: 1
@@ -4186,7 +4186,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   isBusy: 0
-  payByCard: 0
+  selfService: 1
+  selfServiceScanInterval: 0.6
+  selfServicePaymentDelay: 1
+  payByCard: 1
   cardPaymentChance: 1
   pointsToPutProducts:
   - {fileID: 4082220650898859552}
@@ -4236,7 +4239,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   itemType: 13
-  Name: Cash Register
+  Name: Self-Service Checkout
   interactionType: 8
   eventToInvokeWhenInteract:
     m_PersistentCalls:

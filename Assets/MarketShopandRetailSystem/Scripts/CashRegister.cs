@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace MarketShopandRetailSystem
@@ -8,6 +9,61 @@ namespace MarketShopandRetailSystem
     public class CashRegister : MonoBehaviour
     {
         public bool isBusy = false;
+        [Tooltip("Automatically scan products and accept card payment without a player or cashier.")]
+        public bool selfService = false;
+        [Min(0.1f)] public float selfServiceScanInterval = 0.6f;
+        [Min(0f)] public float selfServicePaymentDelay = 1f;
+
+        public static CashRegister[] FindCustomerRegisters()
+        {
+            return FindObjectsOfType<CashRegister>().Where(IsAvailableToCustomers).ToArray();
+        }
+
+        private static bool IsAvailableToCustomers(CashRegister register)
+        {
+            return register != null && register.isActiveAndEnabled && register.pointCustomersCome != null
+                && register.GetComponent<ObjectPlacing>() == null;
+        }
+
+        public static CashRegister SelectForCustomer(IEnumerable<CashRegister> registers,
+            Vector3 customerPosition, float selfServiceChance, float roll)
+        {
+            var available = registers.Where(IsAvailableToCustomers).ToArray();
+            bool preferSelfService = selfServiceChance >= 1f || roll < Mathf.Clamp01(selfServiceChance);
+            var preferred = available.Where(x => x.selfService == preferSelfService).ToArray();
+            return (preferred.Length > 0 ? preferred : available)
+                .OrderBy(x => (x.pointCustomersCome.position - customerPosition).sqrMagnitude).FirstOrDefault();
+        }
+
+        private IEnumerator ProcessSelfService()
+        {
+            // Scan uses the same sounds, prices and product movement as an ordinary register.
+            for (int i = 0; i < productsofCustomer.Count; i++)
+            {
+                SellableObject product = productsofCustomer[i];
+                if (product == null || !product.enabled) continue;
+                yield return new WaitForSeconds(Mathf.Max(0.1f, selfServiceScanInterval));
+                Scan(product);
+            }
+            yield return new WaitForSeconds(Mathf.Max(0f, selfServicePaymentDelay));
+            CompletePurchase();
+        }
+
+        private void OnEnable()
+        {
+            if (!selfService || !isBusy) return;
+            if (paymentCompleted)
+            {
+                isBusy = false;
+                if (Sprite_ShoppingDone != null) Sprite_ShoppingDone.SetActive(false);
+            }
+            else if (CurrentCivilian != null) StartCoroutine(ProcessSelfService());
+        }
+
+        private void OnDisable()
+        {
+            if (selfService) StopAllCoroutines();
+        }
         [Tooltip("Allow customers to pay by card according to Card Payment Chance, without giving change.")]
         public bool payByCard = false;
         [Range(0f, 1f)]
@@ -37,6 +93,8 @@ namespace MarketShopandRetailSystem
 
         public void PutProductsYouGrabbed(CivilianController civilian, List<GameObject> products)
         {
+            // Several customers may reach the queue point in the same frame.
+            if (isBusy || civilian == null || products == null) return;
             if (products.Count > 0)
             {
                 for (int i = 0; i < products.Count; i++)
@@ -55,10 +113,17 @@ namespace MarketShopandRetailSystem
                 Text_Change.text = AdvancedGameManager.Instance.CurrencySymbol + "0";
                 isBusy = true;
                 Bag.SetActive(true);
+                if (selfService)
+                {
+                    Keyboard.SetActive(false);
+                    BankNotes.SetActive(false);
+                    Numbers.SetActive(false);
+                    StartCoroutine(ProcessSelfService());
+                }
             }
             else
             {
-                CurrentCivilian.GoAfterShopping();
+                civilian.GoAfterShopping();
             }
         }
 
@@ -74,6 +139,7 @@ namespace MarketShopandRetailSystem
 
         public void Click_Button_Keyboard(int i)
         {
+            if (selfService) return;
             if (Time.time > lastTimeClick + 0.25f)
             {
                 lastTimeClick = Time.time;
@@ -87,6 +153,7 @@ namespace MarketShopandRetailSystem
 
         public void AddBanknote(int Amount)
         {
+            if (selfService) return;
             if (Time.time > lastTimeClick + 0.25f)
             {
                 lastTimeClick = Time.time;
@@ -111,7 +178,7 @@ namespace MarketShopandRetailSystem
 
         public void Click_Button_Process()
         {
-            if (customerPaysByCard || !CanCompletePurchase())
+            if (selfService || customerPaysByCard || !CanCompletePurchase())
             {
                 return;
             }
@@ -137,7 +204,7 @@ namespace MarketShopandRetailSystem
 
         public void Click_Button_PayByCard()
         {
-            if (!customerPaysByCard || !CanCompletePurchase())
+            if (selfService || !customerPaysByCard || !CanCompletePurchase())
             {
                 return;
             }
@@ -147,6 +214,7 @@ namespace MarketShopandRetailSystem
 
         public void Click_Button_Process_ByCashier()
         {
+            if (selfService) return;
             CompletePurchase();
         }
 
@@ -218,6 +286,7 @@ namespace MarketShopandRetailSystem
 
         public void Click_Button_Remove()
         {
+            if (selfService) return;
             if (Time.time > lastTimeClick + 0.25f)
             {
                 lastTimeClick = Time.time;
@@ -247,6 +316,13 @@ namespace MarketShopandRetailSystem
             {
                 if (CurrentCivilian != null)
                 {
+                    if (selfService)
+                    {
+                        customerPaysByCard = true;
+                        CustomerPaid = TotalPrice;
+                        Text_CustomerPaid.text = "CARD";
+                        return;
+                    }
                     customerPaysByCard = payByCard && (cardPaymentChance >= 1f || UnityEngine.Random.value < cardPaymentChance);
                     if (customerPaysByCard)
                     {

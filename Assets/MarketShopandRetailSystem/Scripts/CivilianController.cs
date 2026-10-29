@@ -103,7 +103,7 @@ namespace MarketShopandRetailSystem
             yield return new WaitForSeconds(2f);
             isGrabbing = false;
             InventoryManager.Instance.CheckCurrentEquipmentList();
-            CashRegister cashRegister = InventoryManager.Instance.CurrentEquipmentList.Where(x => x.CompareTag("Item") && x.GetComponent<CashRegister>() != null).OrderBy(x => Vector3.Distance(transform.position, x.transform.position)).Select(x => x.GetComponent<CashRegister>()).FirstOrDefault();
+            CashRegister cashRegister = CashRegister.FindCustomerRegisters().OrderBy(x => Vector3.Distance(transform.position, x.transform.position)).FirstOrDefault();
             SellableObject[] sellableObjects = GameObject.FindObjectsOfType<SellableObject>().Where(x => x.isAvailable && x.GetSellingPrice() < x.BuyingPrice * AdvancedGameManager.Instance.ProductsProfitLimitForBeingExpensiveTimes && Vector3.Distance(x.transform.position, transform.position) < 30).ToArray();
             if (cashRegister != null)
             {
@@ -190,7 +190,7 @@ namespace MarketShopandRetailSystem
                             if (myBasket.Count > 0)
                             {
                                 InventoryManager.Instance.CheckCurrentEquipmentList();
-                                CashRegister cashRegister = InventoryManager.Instance.CurrentEquipmentList.Where(x => x.CompareTag("Item") && x.GetComponent<CashRegister>() != null).OrderBy(x => Vector3.Distance(transform.position, x.transform.position)).Select(x => x.GetComponent<CashRegister>()).FirstOrDefault();
+                                CashRegister cashRegister = CashRegister.FindCustomerRegisters().OrderBy(x => Vector3.Distance(transform.position, x.transform.position)).FirstOrDefault();
                                 if (cashRegister != null)
                                 {
                                     GoToQueueForPayment(cashRegister);
@@ -236,7 +236,7 @@ namespace MarketShopandRetailSystem
                         if (currentStatus == Status.isWalkingAround)
                         {
                             InventoryManager.Instance.CheckCurrentEquipmentList();
-                            CashRegister cashRegisters = InventoryManager.Instance.CurrentEquipmentList.Where(x => x.CompareTag("Item") && x.GetComponent<CashRegister>() != null).OrderBy(x => Vector3.Distance(transform.position, x.transform.position)).Select(x => x.GetComponent<CashRegister>()).FirstOrDefault();
+                            CashRegister cashRegisters = CashRegister.FindCustomerRegisters().OrderBy(x => Vector3.Distance(transform.position, x.transform.position)).FirstOrDefault();
                             SellableObject[] sellableObjects = GameObject.FindObjectsOfType<SellableObject>().Where(x => x.isAvailable && x.GetSellingPrice() < x.BuyingPrice * AdvancedGameManager.Instance.ProductsProfitLimitForBeingExpensiveTimes).ToArray();
 
                             if (cashRegisters != null && sellableObjects != null && sellableObjects.Length > 0)
@@ -280,7 +280,7 @@ namespace MarketShopandRetailSystem
                                 else
                                 {
                                     InventoryManager.Instance.CheckCurrentEquipmentList();
-                                    CashRegister cashRegister = InventoryManager.Instance.CurrentEquipmentList.Where(x => x.CompareTag("Item") && x.GetComponent<CashRegister>() != null).OrderBy(x => Vector3.Distance(transform.position, x.transform.position)).Select(x => x.GetComponent<CashRegister>()).FirstOrDefault();
+                                    CashRegister cashRegister = CashRegister.FindCustomerRegisters().OrderBy(x => Vector3.Distance(transform.position, x.transform.position)).FirstOrDefault();
                                     if (cashRegister != null)
                                     {
                                         GoToQueueForPayment(cashRegister);
@@ -474,7 +474,7 @@ namespace MarketShopandRetailSystem
                         if (myBasket.Count > 0)
                         {
                             InventoryManager.Instance.CheckCurrentEquipmentList();
-                            CashRegister cashRegister = InventoryManager.Instance.CurrentEquipmentList.Where(x => x.CompareTag("Item") && x.GetComponent<CashRegister>() != null).OrderBy(x => Vector3.Distance(transform.position, x.transform.position)).Select(x => x.GetComponent<CashRegister>()).FirstOrDefault();
+                            CashRegister cashRegister = CashRegister.FindCustomerRegisters().OrderBy(x => Vector3.Distance(transform.position, x.transform.position)).FirstOrDefault();
                             if (cashRegister != null)
                             {
                                 GoToQueueForPayment(cashRegister);
@@ -503,8 +503,11 @@ namespace MarketShopandRetailSystem
         {
             if(!isThief)
             {
-                // Go to pay!
-                target = cashRegister.pointCustomersCome.transform;
+                // Choose once on entering checkout, rather than changing lanes on every update.
+                CashRegister selected = CashRegister.SelectForCustomer(CashRegister.FindCustomerRegisters(),
+                    transform.position, AdvancedGameManager.Instance.selfServiceCheckoutChance, Random.value);
+                if (selected == null) return;
+                target = selected.pointCustomersCome.transform;
                 currentStatus = Status.isInQueue;
                 GoToTarget();
             }

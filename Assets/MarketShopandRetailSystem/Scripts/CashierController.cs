@@ -146,7 +146,7 @@ namespace MarketShopandRetailSystem
                 else
                 {
                     InventoryManager.Instance.CheckCurrentEquipmentList();
-                    CashRegister cashRegister = InventoryManager.Instance.CurrentEquipmentList.Where(x => x.CompareTag("Item") && x.GetComponent<CashRegister>() != null && !x.GetComponent<CashRegister>().isBusy && (x.GetComponent<CashRegister>().CurrentCashier == null || x.GetComponent<CashRegister>().CurrentCashier == this)).OrderBy(x => Vector3.Distance(transform.position, x.transform.position)).Select(x => x.GetComponent<CashRegister>()).FirstOrDefault();
+                    CashRegister cashRegister = InventoryManager.Instance.CurrentEquipmentList.Where(x => x.CompareTag("Item") && x.GetComponent<CashRegister>() != null && !x.GetComponent<CashRegister>().selfService && !x.GetComponent<CashRegister>().isBusy && (x.GetComponent<CashRegister>().CurrentCashier == null || x.GetComponent<CashRegister>().CurrentCashier == this)).OrderBy(x => Vector3.Distance(transform.position, x.transform.position)).Select(x => x.GetComponent<CashRegister>()).FirstOrDefault();
                     if (cashRegister != null && !cashRegister.isBusy)
                     {
                         target = cashRegister.pointPlayerStand.transform;

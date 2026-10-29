@@ -626,7 +626,8 @@ namespace MarketShopandRetailSystem
         {
             if(other.CompareTag("Item") && other.GetComponent<CashRegister>() != null)
             {
-                currentCashRegister = other.GetComponent<CashRegister>();
+                CashRegister register = other.GetComponent<CashRegister>();
+                if (!register.selfService) currentCashRegister = register;
             }
         }
 
@@ -634,7 +635,7 @@ namespace MarketShopandRetailSystem
         {
             if (other.CompareTag("Item") && other.GetComponent<CashRegister>() != null)
             {
-                currentCashRegister = null;
+                if (currentCashRegister == other.GetComponent<CashRegister>()) currentCashRegister = null;
             }
         }
 

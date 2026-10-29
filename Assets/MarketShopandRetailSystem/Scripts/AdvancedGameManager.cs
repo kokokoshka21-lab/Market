@@ -26,6 +26,9 @@ namespace MarketShopandRetailSystem
         public KeyCode MapKey;
         [Range(0, 100)]
         public int NPCShoppingPercentageRate = 25;
+        [Range(0f, 1f)]
+        [Tooltip("Chance of choosing self-service when both checkout types are available.")]
+        public float selfServiceCheckoutChance = 0.5f;
         private int BaseNPCShoppingPercentageRate = 0;
         public bool postersAmountCanEffectNPCShoppingPercentageRate = false;
         public string CurrencySymbol = "$";
