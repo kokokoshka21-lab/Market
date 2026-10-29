@@ -20,6 +20,8 @@ namespace MarketShopandRetailSystem
         public PlacablePoint ShelfPoint { get; private set; }
         private Coroutine locationSave;
         public bool IsMovingToShelf { get; private set; }
+        private GameObject placementPreview;
+        private readonly List<Material> placementPreviewMaterials = new List<Material>();
 
         private sealed class HighlightState
         {
@@ -74,23 +76,132 @@ namespace MarketShopandRetailSystem
         private void OnDisable()
         {
             SetAimHighlight(false);
+            DestroyPlacementPreview();
         }
 
-        public bool TryPlaceOnShelf()
+        private void OnDestroy()
         {
-            if (!isHolding || IsMovingToShelf || TriggerScript.Instance == null) return false;
-            PlacablePoint point = TriggerScript.Instance.placablePoints
+            DestroyPlacementPreview();
+        }
+
+        private PlacablePoint FindShelfPlacementPoint()
+        {
+            if (!isHolding || IsMovingToShelf || TriggerScript.Instance == null) return null;
+            return TriggerScript.Instance.placablePoints
                 .Where(x => x != null && !x.transform.IsChildOf(transform))
                 .OrderBy(x => (x.transform.position - CameraScript.Instance.transform.position).sqrMagnitude)
                 .FirstOrDefault(x => {
                     ArrayableArea area = x.GetComponentInParent<ArrayableArea>();
-                    return area != null && area.CanPlaceBox(x);
+                    return area != null && area.CanPlaceBox(x)
+                        && area.GetComponent<PhysicalEquipmentDetails>() != null;
                 });
+        }
+
+        private void LateUpdate()
+        {
+            if (!isHolding)
+            {
+                DestroyPlacementPreview();
+                return;
+            }
+            PlacablePoint point = Time.timeScale > 0f
+                && AdvancedGameManager.Instance.CurrentMode == Mode.HoldingForOrdering
+                ? FindShelfPlacementPoint() : null;
+            PhysicalEquipmentDetails self = GetComponent<PhysicalEquipmentDetails>();
+            if (point == null || self == null
+                || SaveLoadManager.Instance.GetPlacedObject(self.Name, self.equipmentIndex) == null)
+            {
+                if (placementPreview != null) placementPreview.SetActive(false);
+                return;
+            }
+            if (placementPreview == null) CreatePlacementPreview();
+            // Match AttachToShelf, including shelf scaling and the configured box size.
+            placementPreview.transform.SetParent(point.GetComponentInParent<ArrayableArea>().transform, false);
+            placementPreview.transform.localScale = initialSize;
+            placementPreview.transform.SetPositionAndRotation(point.transform.position, point.transform.rotation);
+            placementPreview.SetActive(true);
+        }
+
+        private void CreatePlacementPreview()
+        {
+            placementPreview = new GameObject(name + " (Box Placement Preview)");
+            placementPreview.SetActive(false);
+            CopyPreviewVisuals(transform, placementPreview.transform);
+            // The held box is open. Show the closed pose that it will have on the shelf.
+            AnimationClip closedPose = animation != null ? animation.GetClip("Open") : null;
+            if (closedPose != null) closedPose.SampleAnimation(placementPreview, 0f);
+        }
+
+        private void CopyPreviewVisuals(Transform source, Transform destination)
+        {
+            // Copy only visual components; never clone gameplay scripts, colliders or box contents.
+            MeshFilter sourceMesh = source.GetComponent<MeshFilter>();
+            MeshRenderer sourceRenderer = source.GetComponent<MeshRenderer>();
+            if (sourceMesh != null && sourceRenderer != null)
+            {
+                destination.gameObject.AddComponent<MeshFilter>().sharedMesh = sourceMesh.sharedMesh;
+                MeshRenderer renderer = destination.gameObject.AddComponent<MeshRenderer>();
+                Material[] materials = sourceRenderer.sharedMaterials;
+                for (int i = 0; i < materials.Length; i++)
+                {
+                    if (materials[i] == null) continue;
+                    Material white = new Material(materials[i]);
+                    if (white.HasProperty("_BaseColor")) white.SetColor("_BaseColor", Color.white);
+                    if (white.HasProperty("_Color")) white.SetColor("_Color", Color.white);
+                    if (white.HasProperty("_EmissionColor"))
+                    {
+                        white.EnableKeyword("_EMISSION");
+                        white.SetColor("_EmissionColor", Color.white * 0.5f);
+                    }
+                    materials[i] = white;
+                    placementPreviewMaterials.Add(white);
+                }
+                renderer.sharedMaterials = materials;
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+                renderer.enabled = sourceRenderer.enabled;
+            }
+            foreach (Transform child in source)
+            {
+                if (child.GetComponent<SellableObject>() != null) continue;
+                var visual = new GameObject(child.name);
+                visual.transform.SetParent(destination, false);
+                visual.transform.localPosition = child.localPosition;
+                visual.transform.localRotation = child.localRotation;
+                visual.transform.localScale = child.localScale;
+                visual.SetActive(child.gameObject.activeSelf);
+                CopyPreviewVisuals(child, visual.transform);
+            }
+        }
+
+        private static void DestroyPreviewObject(UnityEngine.Object value)
+        {
+            if (Application.isPlaying) Destroy(value);
+            else DestroyImmediate(value);
+        }
+
+        private void DestroyPlacementPreview()
+        {
+            if (placementPreview != null)
+            {
+                placementPreview.SetActive(false);
+                DestroyPreviewObject(placementPreview);
+                placementPreview = null;
+            }
+            foreach (Material material in placementPreviewMaterials)
+                if (material != null) DestroyPreviewObject(material);
+            placementPreviewMaterials.Clear();
+        }
+
+        public bool TryPlaceOnShelf()
+        {
+            PlacablePoint point = FindShelfPlacementPoint();
             if (point == null) return false;
             PhysicalEquipmentDetails owner = point.GetComponentInParent<PhysicalEquipmentDetails>();
             PhysicalEquipmentDetails self = GetComponent<PhysicalEquipmentDetails>();
             PlacedObjectData saved = SaveLoadManager.Instance.GetPlacedObject(self.Name, self.equipmentIndex);
             if (owner == null || saved == null) return false;
+            DestroyPlacementPreview();
             isHolding = false;
             HeroPlayerScript.Instance.isHoldingBox = false;
             InventoryManager.Instance.CurrentOrderBox = null;

@@ -219,6 +219,55 @@ public class BoxShelfRegressionTests
     }
 
     [Test]
+    public void PlacementPreviewIsWhiteVisualOnlyAndCleansUpWithoutChangingTheBox()
+    {
+        Component box = Create("OrderBox");
+        GameObject visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        visual.name = "Box visual";
+        visual.transform.SetParent(box.transform, false);
+        visual.transform.localPosition = new Vector3(0.1f, 0.2f, 0.3f);
+        Component contents = Create("SellableObject");
+        contents.name = "Stored Product";
+        contents.transform.SetParent(box.transform, false);
+        Shader shader = Shader.Find("Sprites/Default");
+        Assert.That(shader, Is.Not.Null);
+        Material sourceMaterial = new Material(shader);
+        sourceMaterial.SetColor("_Color", Color.red);
+        visual.GetComponent<MeshRenderer>().sharedMaterial = sourceMaterial;
+        MethodInfo create = box.GetType().GetMethod("CreatePlacementPreview", BindingFlags.Instance | BindingFlags.NonPublic);
+        MethodInfo cleanup = box.GetType().GetMethod("DestroyPlacementPreview", BindingFlags.Instance | BindingFlags.NonPublic);
+        FieldInfo previewField = box.GetType().GetField("placementPreview", BindingFlags.Instance | BindingFlags.NonPublic);
+        try
+        {
+            create.Invoke(box, null);
+            GameObject preview = (GameObject)previewField.GetValue(box);
+            Assert.That(preview, Is.Not.Null);
+            Assert.That(preview.GetComponentsInChildren<MonoBehaviour>(true), Is.Empty);
+            Assert.That(preview.GetComponentsInChildren<Collider>(true), Is.Empty);
+            Assert.That(preview.GetComponentsInChildren<Rigidbody>(true), Is.Empty);
+            Assert.That(preview.transform.Find("Stored Product"), Is.Null);
+            MeshRenderer ghost = preview.GetComponentInChildren<MeshRenderer>(true);
+            Material ghostMaterial = ghost.sharedMaterial;
+            Assert.That(ghostMaterial, Is.Not.SameAs(sourceMaterial));
+            Assert.That(ghostMaterial.GetColor("_Color"), Is.EqualTo(Color.white));
+            Assert.That(ghost.transform.localPosition, Is.EqualTo(visual.transform.localPosition));
+            Assert.That(sourceMaterial.GetColor("_Color"), Is.EqualTo(Color.red));
+            Assert.That(visual.GetComponent<BoxCollider>().enabled, Is.True);
+            cleanup.Invoke(box, null);
+            Assert.That(preview == null, Is.True);
+            Assert.That(ghostMaterial == null, Is.True);
+            Assert.That(previewField.GetValue(box), Is.Null);
+            cleanup.Invoke(box, null); // Repeated cleanup on disable/destroy is safe.
+        }
+        finally
+        {
+            cleanup.Invoke(box, null);
+            visual.GetComponent<MeshRenderer>().sharedMaterial = null;
+            UnityEngine.Object.DestroyImmediate(sourceMaterial);
+        }
+    }
+
+    [Test]
     public void OrdinarySceneObjectDoesNotAcquirePreviewMaterials()
     {
         Component placing = Create("ObjectPlacing");
