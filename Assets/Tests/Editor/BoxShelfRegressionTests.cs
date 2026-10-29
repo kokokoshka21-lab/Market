@@ -123,6 +123,101 @@ public class BoxShelfRegressionTests
         Assert.That(first.GetType().GetProperty("SceneShelfId").GetValue(first), Is.EqualTo(firstId));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void AimTintPreservesSharedMaterialAndRestoresExistingOverrides(bool perMaterial)
+    {
+        Component box = Create("OrderBox");
+        MeshRenderer renderer = box.gameObject.AddComponent<MeshRenderer>();
+        Shader shader = Shader.Find("Sprites/Default");
+        Assert.That(shader, Is.Not.Null);
+        var material = new Material(shader);
+        try
+        {
+            renderer.sharedMaterial = material;
+            Color sharedColor = material.GetColor("_Color");
+            var original = new MaterialPropertyBlock();
+            original.SetColor("_Color", Color.blue);
+            if (perMaterial) renderer.SetPropertyBlock(original, 0);
+            else renderer.SetPropertyBlock(original);
+            MethodInfo highlight = box.GetType().GetMethod("SetAimHighlight");
+            highlight.Invoke(box, new object[] { true });
+            var tinted = new MaterialPropertyBlock();
+            renderer.GetPropertyBlock(tinted, 0);
+            Assert.That(tinted.GetColor("_Color"), Is.EqualTo(Color.Lerp(Color.blue, Color.yellow, 0.25f)));
+            Assert.That(renderer.sharedMaterial, Is.SameAs(material));
+            Assert.That(material.GetColor("_Color"), Is.EqualTo(sharedColor));
+            highlight.Invoke(box, new object[] { false });
+            var restored = new MaterialPropertyBlock();
+            renderer.GetPropertyBlock(restored, 0);
+            if (perMaterial) Assert.That(restored.GetColor("_Color"), Is.EqualTo(Color.blue));
+            else
+            {
+                Assert.That(restored.isEmpty, Is.True);
+                renderer.GetPropertyBlock(restored);
+                Assert.That(restored.GetColor("_Color"), Is.EqualTo(Color.blue));
+            }
+        }
+        finally
+        {
+            box.GetType().GetMethod("SetAimHighlight").Invoke(box, new object[] { false });
+            renderer.sharedMaterial = null;
+            UnityEngine.Object.DestroyImmediate(material);
+        }
+    }
+
+    [Test]
+    public void AimSelectsTheSpecificBoxInsideShelfBoundsAndDoesNotLookThroughWalls()
+    {
+        Component hero = Create("HeroPlayerScript");
+        Set(hero, "LayersToCheck", (LayerMask)(1 << 31));
+        Component shelf = Create("ArrayableArea");
+        Set(shelf, "PlacablePoints", Array.CreateInstance(Script("PlacablePoint"), 0));
+        Set(shelf, "boxesOnly", true);
+        shelf.gameObject.layer = 31;
+        shelf.transform.position = new Vector3(0f, 1000f, 1.5f);
+        BoxCollider bounds = shelf.gameObject.AddComponent<BoxCollider>();
+        bounds.size = new Vector3(2f, 2f, 2f);
+        shelf.gameObject.SetActive(true);
+        Component[] boxes = { Create("OrderBox"), Create("OrderBox") };
+        for (int index = 0; index < boxes.Length; index++)
+        {
+            Component point = Create("PlacablePoint");
+            point.transform.SetParent(shelf.transform);
+            Component box = boxes[index];
+            box.gameObject.layer = 31;
+            box.transform.position = new Vector3(index == 0 ? -0.4f : 0.4f, 1000f, 1.5f);
+            box.gameObject.AddComponent<BoxCollider>().size = Vector3.one * 0.3f;
+            point.gameObject.layer = 31;
+            point.transform.position = box.transform.position - Vector3.forward * 0.4f;
+            SphereCollider marker = point.gameObject.AddComponent<SphereCollider>();
+            marker.radius = 0.1f;
+            marker.isTrigger = true;
+            point.gameObject.SetActive(true);
+            box.GetType().GetField("<ShelfPoint>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(box, point);
+            box.gameObject.SetActive(true);
+        }
+        MethodInfo raycast = hero.GetType().GetMethod("RaycastInteraction", BindingFlags.Instance | BindingFlags.NonPublic);
+        Physics.SyncTransforms();
+        foreach (Component box in boxes)
+        {
+            Ray ray = new Ray(new Vector3(box.transform.position.x, 1000f, 0f), Vector3.forward);
+            object[] args = { ray, default(RaycastHit) };
+            Assert.That(raycast.Invoke(hero, args), Is.True);
+            Assert.That(((RaycastHit)args[1]).collider.gameObject, Is.EqualTo(box.gameObject));
+        }
+        var wall = new GameObject("Obstruction");
+        objects.Add(wall);
+        wall.layer = 31;
+        wall.transform.position = new Vector3(-0.4f, 1000f, 0.9f);
+        wall.AddComponent<BoxCollider>().size = new Vector3(0.4f, 1f, 0.1f);
+        Physics.SyncTransforms();
+        object[] blocked = { new Ray(new Vector3(-0.4f, 1000f, 0f), Vector3.forward), default(RaycastHit) };
+        Assert.That(raycast.Invoke(hero, blocked), Is.True);
+        Assert.That(((RaycastHit)blocked[1]).collider.GetComponentInParent(Script("OrderBox")), Is.Null);
+    }
+
     [Test]
     public void OrdinarySceneObjectDoesNotAcquirePreviewMaterials()
     {

@@ -21,6 +21,61 @@ namespace MarketShopandRetailSystem
         private Coroutine locationSave;
         public bool IsMovingToShelf { get; private set; }
 
+        private sealed class HighlightState
+        {
+            public Renderer renderer;
+            public int materialIndex;
+            public MaterialPropertyBlock original;
+        }
+
+        private readonly List<HighlightState> highlightStates = new List<HighlightState>();
+        private bool aimHighlighted;
+
+        public void SetAimHighlight(bool highlighted)
+        {
+            if (aimHighlighted == highlighted) return;
+            aimHighlighted = highlighted;
+            if (!highlighted)
+            {
+                foreach (HighlightState state in highlightStates)
+                    if (state.renderer != null)
+                        state.renderer.SetPropertyBlock(state.original.isEmpty ? null : state.original, state.materialIndex);
+                highlightStates.Clear();
+                return;
+            }
+            foreach (MeshRenderer renderer in GetComponentsInChildren<MeshRenderer>())
+            {
+                // Tint the box itself, keeping the products and their labels unchanged.
+                if (renderer.GetComponentInParent<SellableObject>() != null) continue;
+                Material[] materials = renderer.sharedMaterials;
+                for (int index = 0; index < materials.Length; index++)
+                {
+                    Material material = materials[index];
+                    if (material == null) continue;
+                    string property = material.HasProperty("_BaseColor") ? "_BaseColor" : "_Color";
+                    if (!material.HasProperty(property)) continue;
+                    int colorId = Shader.PropertyToID(property);
+                    var original = new MaterialPropertyBlock();
+                    renderer.GetPropertyBlock(original, index);
+                    var tint = new MaterialPropertyBlock();
+                    renderer.GetPropertyBlock(tint, index);
+                    // Preserve renderer-wide overrides when there is no per-material block.
+                    if (tint.isEmpty) renderer.GetPropertyBlock(tint);
+                    Color color = tint.HasColor(colorId) ? tint.GetColor(colorId) : material.GetColor(colorId);
+                    Color yellow = Color.Lerp(color, Color.yellow, 0.25f);
+                    yellow.a = color.a;
+                    tint.SetColor(colorId, yellow);
+                    highlightStates.Add(new HighlightState { renderer = renderer, materialIndex = index, original = original });
+                    renderer.SetPropertyBlock(tint, index);
+                }
+            }
+        }
+
+        private void OnDisable()
+        {
+            SetAimHighlight(false);
+        }
+
         public bool TryPlaceOnShelf()
         {
             if (!isHolding || IsMovingToShelf || TriggerScript.Instance == null) return false;
@@ -266,6 +321,7 @@ namespace MarketShopandRetailSystem
             if (!isHolding && !HeroPlayerScript.Instance.isHoldingBox)
             {
                 if (locationSave != null) StopCoroutine(locationSave);
+                SetAimHighlight(false);
                 DetachFromShelf();
                 isHolding = true;
                 HeroPlayerScript.Instance.isHoldingBox = true;

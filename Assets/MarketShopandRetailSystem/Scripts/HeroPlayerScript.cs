@@ -40,6 +40,7 @@ namespace MarketShopandRetailSystem
         public float boxThrowMovementMultiplier = 1f;
         private const float BoxThrowTapDuration = 0.2f;
         private ItemScript chargingBox;
+        private OrderBox highlightedShelfBox;
         private float boxThrowChargeStartedAt;
         public GameObject MainCamera;
         private int currentKeyIdinHands = -1;
@@ -196,6 +197,7 @@ namespace MarketShopandRetailSystem
 
         private void OnDisable()
         {
+            SetHighlightedShelfBox(null);
             chargingBox = null;
             isButtonInteractHeld = false;
         }
@@ -242,6 +244,8 @@ namespace MarketShopandRetailSystem
         {
             if (InteractableObject != null)
             {
+                OrderBox shelfBox = InteractableObject.GetComponent<OrderBox>();
+                if (shelfBox != null && shelfBox.ShelfPoint != null && shelfBox != highlightedShelfBox) return;
                 if (InteractableObject.interactionType == InteractionType.Clean || InteractableObject.interactionType == InteractionType.Build)
                 {
                     if (InteractableObject.NeededHandType == Hand_Type.Any || InteractableObject.NeededHandType == FPSHandRotator.Instance.Current_HandType)
@@ -318,10 +322,49 @@ namespace MarketShopandRetailSystem
             if (GrableObject != null) InventoryManager.Instance.BeginMovingShelf(GrableObject);
         }
 
+        private void SetHighlightedShelfBox(OrderBox box)
+        {
+            if (highlightedShelfBox == box) return;
+            if (highlightedShelfBox != null) highlightedShelfBox.SetAimHighlight(false);
+            highlightedShelfBox = box;
+            if (highlightedShelfBox != null) highlightedShelfBox.SetAimHighlight(true);
+        }
+
+        private bool RaycastInteraction(Ray ray, out RaycastHit hit)
+        {
+            RaycastHit[] hits = Physics.RaycastAll(ray, 2f, LayersToCheck, QueryTriggerInteraction.UseGlobal)
+                .Where(candidate => candidate.collider.GetComponent<PlacablePoint>() == null).ToArray();
+            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+            hit = hits.Length > 0 ? hits[0] : default(RaycastHit);
+            if (hits.Length == 0) return false;
+            // Shelf root colliders can enclose all slots. Look through that bounding volume
+            // only for a box attached to that same shelf; walls and other objects still block aim.
+            ArrayableArea shelf = hits[0].collider.GetComponent<ArrayableArea>();
+            if (shelf == null || !shelf.boxesOnly || shelf.GetComponent<OrderBox>() != null) return true;
+            foreach (RaycastHit candidate in hits)
+            {
+                if (candidate.collider.GetComponent<ArrayableArea>() == shelf) continue;
+                OrderBox box = candidate.collider.GetComponentInParent<OrderBox>();
+                if (box != null && box.ShelfPoint != null
+                    && box.ShelfPoint.GetComponentInParent<ArrayableArea>() == shelf)
+                    hit = candidate;
+                break;
+            }
+            return true;
+        }
+
         private void Update()
         {
+            if (Time.timeScale == 0f || Camera.main == null)
+            {
+                SetHighlightedShelfBox(null);
+                return;
+            }
+            if (isHoldingBox || AdvancedGameManager.Instance.CurrentMode != Mode.Free)
+                SetHighlightedShelfBox(null);
             if (InventoryManager.Instance != null && InventoryManager.Instance.IsPlacingThisFrame)
             {
+                SetHighlightedShelfBox(null);
                 chargingBox = null;
                 return;
             }
@@ -398,8 +441,22 @@ namespace MarketShopandRetailSystem
 
                 Ray ray = Camera.main.ScreenPointToRay(GameCanvas.Instance.Crosshair.transform.position);
                 RaycastHit other;
-                if (Physics.Raycast(ray, out other, 2, LayersToCheck) && !isHoldingBox)
+                if (RaycastInteraction(ray, out other) && !isHoldingBox)
                 {
+                    OrderBox aimedBox = other.collider.GetComponentInParent<OrderBox>();
+                    ItemScript aimedItem = aimedBox != null ? aimedBox.GetComponent<ItemScript>()
+                        : other.collider.GetComponent<ItemScript>();
+                    bool canAimBox = aimedBox != null && aimedBox.ShelfPoint != null
+                        && aimedBox.ContentsReady && !aimedBox.IsMovingToShelf
+                        && aimedItem != null && aimedItem.enabled && !aimedItem.isInteracted
+                        && AdvancedGameManager.Instance.CurrentMode == Mode.Free;
+                    SetHighlightedShelfBox(canAimBox ? aimedBox : null);
+                    // A hit on the shelf or an obstacle must not keep a previously aimed box selected.
+                    if (InteractableObject != null && InteractableObject != aimedItem)
+                    {
+                        InteractableObject = null;
+                        GameCanvas.Instance.Hide_Warning();
+                    }
                     // Let's check that is it an Inventory Equipment or Not
                     if (other.collider.CompareTag("Item") && other.collider.GetComponent<PhysicalEquipmentDetails>() != null && other.collider.GetComponent<ObjectPlacing>() == null && other.collider.GetComponent<OrderBox>() == null)
                     {
@@ -430,12 +487,14 @@ namespace MarketShopandRetailSystem
                         GameCanvas.Instance.Hide_GrabbingHint();
                     }
 
-                    if ((other.collider.CompareTag("Item") || other.collider.CompareTag("Character")) && other.collider.GetComponent<ObjectPlacing>() == null)
+                    if ((aimedBox != null || other.collider.CompareTag("Item") || other.collider.CompareTag("Character"))
+                        && other.collider.GetComponentInParent<ObjectPlacing>() == null)
                     {
-                        var Item = other.collider.GetComponent<ItemScript>();
+                        var Item = aimedItem;
                         if (Item != null && Item.isInteracted) return;
 
                         if (Item == null || !Item.enabled) return;
+                        if (aimedBox != null && aimedBox.ShelfPoint != null && !canAimBox) return;
 
                         if (InteractableObject != null && InteractableObject != Item)
                         {
@@ -450,6 +509,7 @@ namespace MarketShopandRetailSystem
                 }
                 else
                 {
+                    SetHighlightedShelfBox(null);
                     if (GrableObject != null)
                     {
                         GrableObject = null;
