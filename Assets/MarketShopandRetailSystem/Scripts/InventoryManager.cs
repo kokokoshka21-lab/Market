@@ -383,9 +383,10 @@ namespace MarketShopandRetailSystem
             if (point == null || !point.isAvailable || point.objectToGrab != null || point.Floor == null
                 || point.GetComponentInParent<OrderBox>() != null) return false;
             ArrayableArea area = point.GetComponentInParent<ArrayableArea>();
-            return area != null && area.storageType.HasFlag(product.storageType)
+            return area != null && !area.boxesOnly && area.storageType.HasFlag(product.storageType)
                 && !area.PlacablePoints.Any(x => x.Floor == point.Floor && x.objectToGrab != null
-                    && x.objectToGrab.GetComponent<SellableObject>().Name != product.Name);
+                    && (x.objectToGrab.GetComponent<SellableObject>() == null
+                        || x.objectToGrab.GetComponent<SellableObject>().Name != product.Name));
         }
 
         private void StockFromCurrentBox()
@@ -449,6 +450,7 @@ namespace MarketShopandRetailSystem
             }
             else if (AdvancedGameManager.Instance.CurrentMode == Mode.HoldingForOrdering)
             {
+                if (CurrentOrderBox != null && CurrentOrderBox.TryPlaceOnShelf()) return;
                 StockFromCurrentBox();
             }
         }
@@ -571,6 +573,22 @@ namespace MarketShopandRetailSystem
             yield return new WaitForSeconds(1);
             // First find all placeablePoints
             PlacablePoint[] placablePoints = GameObject.FindObjectsOfType<PlacablePoint>();
+            // Restore whole boxes before assigning loose products to shelf slots.
+            foreach (GameObject equipment in CurrentEquipmentList.Where(x => x != null))
+            {
+                OrderBox box = equipment.GetComponent<OrderBox>();
+                PhysicalEquipmentDetails detail = equipment.GetComponent<PhysicalEquipmentDetails>();
+                if (box == null || detail == null) continue;
+                PlacedObjectData saved = SaveLoadManager.Instance.GetPlacedObject(detail.Name, detail.equipmentIndex);
+                if (saved == null || string.IsNullOrEmpty(saved.boxShelfName)) continue;
+                PhysicalEquipmentDetails shelf = CurrentEquipmentList.Where(x => x != null)
+                    .Select(x => x.GetComponent<PhysicalEquipmentDetails>()).FirstOrDefault(x => x != null
+                        && x.Name == saved.boxShelfName && x.equipmentIndex == saved.boxShelfIndex);
+                ArrayableArea area = shelf != null ? shelf.GetComponent<ArrayableArea>() : null;
+                if (area == null || saved.boxShelfSlot < 0 || saved.boxShelfSlot >= area.PlacablePoints.Length) continue;
+                PlacablePoint point = area.PlacablePoints[saved.boxShelfSlot];
+                if (area.CanPlaceBox(point)) box.AttachToShelf(point);
+            }
             SellableObject[] sellableObjects = GameObject.FindObjectsOfType<SellableObject>();
             foreach (SellableObjectData saved in SaveLoadManager.Instance.GetAllSellableObjects())
             {
@@ -580,7 +598,7 @@ namespace MarketShopandRetailSystem
                     .Select(x => x.GetComponent<PhysicalEquipmentDetails>()).FirstOrDefault(x => x != null
                         && x.Name == saved.shelfName && x.equipmentIndex == saved.shelfIndex);
                 ArrayableArea area = shelf != null ? shelf.GetComponent<ArrayableArea>() : null;
-                if (area == null || saved.slotIndex < 0 || saved.slotIndex >= area.PlacablePoints.Length) continue;
+                if (area == null || area.boxesOnly || saved.slotIndex < 0 || saved.slotIndex >= area.PlacablePoints.Length) continue;
                 PlacablePoint point = area.PlacablePoints[saved.slotIndex];
                 SellableObject product = sellableObjects.FirstOrDefault(x => x.Name == saved.productName
                     && x.sellableObjectIndex == saved.objectIndex && x.isAvailable && x.putPoint == null);
@@ -594,7 +612,9 @@ namespace MarketShopandRetailSystem
             }
             for (int i = 0; i < placablePoints.Length; i++)
             {
-                if (placablePoints[i].objectToGrab != null) continue;
+                ArrayableArea area = placablePoints[i].GetComponentInParent<ArrayableArea>();
+                if (placablePoints[i].objectToGrab != null || area == null || area.boxesOnly
+                    || area.GetComponent<OrderBox>() != null) continue;
                 var found = sellableObjects.Where(x => (x.transform.position - placablePoints[i].transform.position).sqrMagnitude < 0.0001f
                     && x.isAvailable && x.putPoint == null).FirstOrDefault();
                 if (found != null)

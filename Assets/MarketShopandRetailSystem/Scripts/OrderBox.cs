@@ -17,6 +17,74 @@ namespace MarketShopandRetailSystem
         public ArrayableArea arrayableArea;
         public Animation animation;
         public Collider collider;
+        public PlacablePoint ShelfPoint { get; private set; }
+        private Coroutine locationSave;
+
+        public bool TryPlaceOnShelf()
+        {
+            if (!isHolding || TriggerScript.Instance == null) return false;
+            PlacablePoint point = TriggerScript.Instance.placablePoints
+                .Where(x => x != null && !x.transform.IsChildOf(transform))
+                .OrderBy(x => (x.transform.position - CameraScript.Instance.transform.position).sqrMagnitude)
+                .FirstOrDefault(x => {
+                    ArrayableArea area = x.GetComponentInParent<ArrayableArea>();
+                    return area != null && area.CanPlaceBox(x);
+                });
+            if (point == null) return false;
+            PhysicalEquipmentDetails owner = point.GetComponentInParent<PhysicalEquipmentDetails>();
+            PhysicalEquipmentDetails self = GetComponent<PhysicalEquipmentDetails>();
+            PlacedObjectData saved = SaveLoadManager.Instance.GetPlacedObject(self.Name, self.equipmentIndex);
+            if (owner == null || saved == null) return false;
+            isHolding = false;
+            HeroPlayerScript.Instance.isHoldingBox = false;
+            InventoryManager.Instance.CurrentOrderBox = null;
+            if (AdvancedGameManager.Instance.controllerType == ControllerType.Mobile)
+                GameCanvas.Instance.Button_GetProductBackToOrderBox.SetActive(false);
+            AttachToShelf(point);
+            saved.boxShelfName = owner.Name;
+            saved.boxShelfIndex = owner.equipmentIndex;
+            saved.boxShelfSlot = point.ID;
+            saved.position = new Vector3Data(transform.position);
+            saved.rotation = new Vector3Data(transform.eulerAngles);
+            saved.scale = new Vector3Data(transform.localScale);
+            SaveLoadManager.Instance.SaveGame();
+            AdvancedGameManager.Instance.CurrentMode = Mode.Free;
+            AudioManager.Instance.Play_audioClip_Locate();
+            return true;
+        }
+
+        public void AttachToShelf(PlacablePoint point)
+        {
+            ShelfPoint = point;
+            point.objectToGrab = gameObject;
+            point.isAvailable = false;
+            // Parent to the shelf so relocation also carries the box and its contents.
+            transform.SetParent(point.GetComponentInParent<ArrayableArea>().transform, true);
+            transform.localScale = initialSize;
+            transform.SetPositionAndRotation(point.transform.position, point.transform.rotation);
+            rigidbody.isKinematic = true;
+            rigidbody.useGravity = false;
+            transform.GetComponent<BoxCollider>().enabled = true;
+            animation.Stop();
+            animation["Open"].time = 0f;
+            animation["Open"].speed = 0f;
+            animation.Play();
+        }
+
+        private void DetachFromShelf()
+        {
+            if (ShelfPoint == null) return;
+            ShelfPoint.objectToGrab = null;
+            ShelfPoint.isAvailable = true;
+            ShelfPoint = null;
+            PhysicalEquipmentDetails self = GetComponent<PhysicalEquipmentDetails>();
+            PlacedObjectData saved = SaveLoadManager.Instance.GetPlacedObject(self.Name, self.equipmentIndex);
+            if (saved != null)
+            {
+                saved.boxShelfName = null;
+                SaveLoadManager.Instance.SaveGame();
+            }
+        }
 
         public SpriteRenderer spriteProduct;
         public TMPro.TMP_Text textCount;
@@ -133,6 +201,7 @@ namespace MarketShopandRetailSystem
 
         public void DestroyTheOrderBox(float destroyDelay)
         {
+            DetachFromShelf();
             InventoryManager.Instance.RemovefromSystem(GetComponent<PhysicalEquipmentDetails>().equipmentIndex, GetComponent<PhysicalEquipmentDetails>().Name);
             InventoryManager.Instance.CurrentEquipmentList.Remove(gameObject);
             textCount.text = "0";
@@ -155,6 +224,8 @@ namespace MarketShopandRetailSystem
             if (!ContentsReady) return;
             if (!isHolding && !HeroPlayerScript.Instance.isHoldingBox)
             {
+                if (locationSave != null) StopCoroutine(locationSave);
+                DetachFromShelf();
                 isHolding = true;
                 HeroPlayerScript.Instance.isHoldingBox = true;
                 InventoryManager.Instance.CurrentOrderBox = this;
@@ -178,7 +249,13 @@ namespace MarketShopandRetailSystem
             }
             else if (isHolding && HeroPlayerScript.Instance.isHoldingBox)
             {
-                if (TriggerScript.Instance.placablePoints.Count == 0)
+                if (TryPlaceOnShelf()) return;
+                // Box-only points must not prevent throwing when every box slot is full.
+                if (!TriggerScript.Instance.placablePoints.Any(point => point != null
+                    && !point.transform.IsChildOf(transform)
+                    && point.GetComponentInParent<OrderBox>() == null
+                    && point.GetComponentInParent<ArrayableArea>() != null
+                    && !point.GetComponentInParent<ArrayableArea>().boxesOnly))
                 {
                     isHolding = false;
                     if (AdvancedGameManager.Instance.controllerType == ControllerType.Mobile)
@@ -202,7 +279,7 @@ namespace MarketShopandRetailSystem
                     AdvancedGameManager.Instance.CurrentMode = Mode.Free;
                     transform.parent = null;
                     AudioManager.Instance.Play_Item_Grab();
-                    StartCoroutine(SavetoSystemNewLocation());
+                    locationSave = StartCoroutine(SavetoSystemNewLocation());
                 }
             }
         }
@@ -210,6 +287,7 @@ namespace MarketShopandRetailSystem
         public IEnumerator SavetoSystemNewLocation()
         {
             yield return new WaitForSeconds(2);
+            if (isHolding || ShelfPoint != null) yield break;
             PhysicalEquipmentDetails d = GetComponent<PhysicalEquipmentDetails>();
             int objectID = d.equipmentIndex;
             

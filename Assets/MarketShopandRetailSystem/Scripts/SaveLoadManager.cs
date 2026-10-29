@@ -308,6 +308,13 @@ namespace MarketShopandRetailSystem
             {
                 if (point.objectToGrab == null) continue;
                 SellableObject product = point.objectToGrab.GetComponent<SellableObject>();
+                OrderBox box = point.objectToGrab.GetComponent<OrderBox>();
+                if (box != null)
+                {
+                    PhysicalEquipmentDetails detail = box.GetComponent<PhysicalEquipmentDetails>();
+                    if (detail == null || GetPlacedObject(detail.Name, detail.equipmentIndex) == null) return false;
+                    continue;
+                }
                 if (product == null || !currentSaveData.sellableObjects.Exists(x =>
                     x.productName == product.Name && x.objectIndex == product.sellableObjectIndex)) return false;
             }
@@ -319,6 +326,18 @@ namespace MarketShopandRetailSystem
             {
                 if (point.objectToGrab == null) continue;
                 SellableObject product = point.objectToGrab.GetComponent<SellableObject>();
+                OrderBox box = point.objectToGrab.GetComponent<OrderBox>();
+                if (box != null)
+                {
+                    PhysicalEquipmentDetails detail = box.GetComponent<PhysicalEquipmentDetails>();
+                    PlacedObjectData boxRecord = GetPlacedObject(detail.Name, detail.equipmentIndex);
+                    boxRecord.position = new Vector3Data(box.transform.position);
+                    boxRecord.rotation = new Vector3Data(box.transform.eulerAngles);
+                    boxRecord.boxShelfName = shelf.Name;
+                    boxRecord.boxShelfIndex = shelf.equipmentIndex;
+                    boxRecord.boxShelfSlot = point.ID;
+                    continue;
+                }
                 SellableObjectData record = currentSaveData.sellableObjects.Find(x =>
                     x.productName == product.Name && x.objectIndex == product.sellableObjectIndex);
                 record.position = new Vector3Data(product.transform.position);

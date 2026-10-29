@@ -10,6 +10,15 @@ namespace MarketShopandRetailSystem
         private OrderBox OrderBox;
         private PhysicalEquipmentDetails detail;
         public StorageType storageType;
+        [Tooltip("Use the existing placement points for whole order boxes instead of individual products.")]
+        public bool boxesOnly = false;
+
+        public bool CanPlaceBox(PlacablePoint point)
+        {
+            return boxesOnly && GetComponent<OrderBox>() == null
+                && point != null && PlacablePoints.Contains(point)
+                && point.isAvailable && point.objectToGrab == null;
+        }
 
         private void Awake()
         {
