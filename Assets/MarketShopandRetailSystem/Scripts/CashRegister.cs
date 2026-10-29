@@ -11,6 +11,7 @@ namespace MarketShopandRetailSystem
         public bool isBusy = false;
         [Tooltip("Automatically scan products and accept card payment without a player or cashier.")]
         public bool selfService = false;
+        public float ServiceProgressAt { get; private set; }
         [Min(0.1f)] public float selfServiceScanInterval = 0.6f;
         [Min(0f)] public float selfServicePaymentDelay = 1f;
 
@@ -91,6 +92,48 @@ namespace MarketShopandRetailSystem
         public CashierController CurrentCashier;
         int ProductIndex = 0;
 
+        public bool HasAttendant()
+        {
+            return selfService || (CurrentCashier != null && CurrentCashier.IsAttending(this))
+                || (HeroPlayerScript.Instance != null && HeroPlayerScript.Instance.isActiveAndEnabled
+                    && HeroPlayerScript.Instance.currentCashRegister == this);
+        }
+
+        public bool IsServing(CivilianController customer)
+        {
+            return customer != null && isBusy && !paymentCompleted && CurrentCivilian == customer;
+        }
+
+        public bool CancelCustomer(CivilianController customer)
+        {
+            if (!IsServing(customer)) return false;
+            StopAllCoroutines(); // Stop scanned products moving or disappearing after cancellation.
+            foreach (SellableObject product in productsofCustomer)
+            {
+                if (product == null) continue;
+                product.enabled = true;
+                product.isAvailable = false;
+                product.transform.SetParent(customer.transform, true);
+                product.gameObject.SetActive(false);
+            }
+            productsofCustomer.Clear();
+            CurrentCivilian = null;
+            ProductIndex = 0;
+            TotalPrice = CustomerPaid = 0;
+            customerPaysByCard = false;
+            paymentCompleted = false;
+            isBusy = false;
+            if (Bag != null) Bag.SetActive(false);
+            if (Keyboard != null) Keyboard.SetActive(false);
+            if (Sprite_Wrong != null) Sprite_Wrong.SetActive(false);
+            if (Sprite_ShoppingDone != null) Sprite_ShoppingDone.SetActive(false);
+            string zero = (AdvancedGameManager.Instance != null ? AdvancedGameManager.Instance.CurrencySymbol : "$") + "0";
+            if (Text_Total != null) Text_Total.text = zero;
+            if (Text_Change != null) Text_Change.text = zero;
+            if (Text_CustomerPaid != null) Text_CustomerPaid.text = zero;
+            return true;
+        }
+
         public void PutProductsYouGrabbed(CivilianController civilian, List<GameObject> products)
         {
             // Several customers may reach the queue point in the same frame.
@@ -105,6 +148,7 @@ namespace MarketShopandRetailSystem
                     products[i].transform.localPosition = pointsToPutProducts[i].transform.localPosition;
                 }
                 CurrentCivilian = civilian;
+                ServiceProgressAt = Time.time;
                 paymentCompleted = false;
                 customerPaysByCard = false;
                 TotalPrice = 0;
@@ -306,6 +350,7 @@ namespace MarketShopandRetailSystem
                 return;
             }
 
+            ServiceProgressAt = Time.time;
             product.enabled = false;
             TotalPrice = TotalPrice + product.GetSellingPrice();
             Text_Total.text = AdvancedGameManager.Instance.CurrencySymbol + TotalPrice.ToString();

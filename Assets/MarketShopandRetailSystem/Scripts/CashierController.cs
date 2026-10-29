@@ -17,6 +17,28 @@ namespace MarketShopandRetailSystem
         private CashRegister currentCashRegister;
 
 
+        public bool IsAttending(CashRegister register)
+        {
+            return register != null && register.pointPlayerStand != null && isActiveAndEnabled
+                && currentCashRegister == register && agent != null && agent.isOnNavMesh
+                && Vector3.Distance(transform.position, register.pointPlayerStand.position) <= agent.stoppingDistance + 0.2f;
+        }
+
+        private void ReleaseRegister()
+        {
+            if (currentCashRegister != null && currentCashRegister.CurrentCashier == this)
+                currentCashRegister.CurrentCashier = null;
+        }
+
+        private void OnDisable()
+        {
+            StopAllCoroutines();
+            ReleaseRegister();
+            currentCashRegister = null;
+            target = null;
+            isworking = false;
+        }
+
         private void OnEnable()
         {
             agent = GetComponent<NavMeshAgent>();
@@ -39,6 +61,7 @@ namespace MarketShopandRetailSystem
                 currentCashRegister.Click_Button_Process_ByCashier();
             }
             yield return new WaitForSeconds(1);
+            ReleaseRegister();
             target = null;
             currentCashRegister = null;
             isworking = false;

@@ -139,6 +139,8 @@ namespace MarketShopandRetailSystem
             }
             if (shelf.GetComponent<ArrayableArea>().PlacablePoints.Any(point => point.objectToGrab != null
                 && (productsInTransit.Contains(point.objectToGrab.transform)
+                    || (point.objectToGrab.GetComponent<SellableObject>() != null
+                        && !point.objectToGrab.GetComponent<SellableObject>().isAvailable)
                     || (point.objectToGrab.GetComponent<OrderBox>() != null
                         && point.objectToGrab.GetComponent<OrderBox>().IsMovingToShelf))))
             {
@@ -261,6 +263,7 @@ namespace MarketShopandRetailSystem
 
         private void Update()
         {
+            if (shelvesReady) RetryPendingShelfReturns();
             if (IsMovingShelf && AdvancedGameManager.Instance.CurrentMode != Mode.InInventoryLocating)
             {
                 Mode nextMode = AdvancedGameManager.Instance.CurrentMode;
@@ -300,6 +303,62 @@ namespace MarketShopandRetailSystem
                         Click_Button_GetBackToOrderBox();
                     }
                 }
+            }
+        }
+
+        private float nextShelfReturnCheck;
+
+        public static bool CanReturnProductToPoint(SellableObject product, PlacablePoint point)
+        {
+            if (product == null || point == null || !point.gameObject.activeInHierarchy
+                || !point.isAvailable || point.objectToGrab != null || point.Floor == null) return false;
+            ArrayableArea area = point.GetComponentInParent<ArrayableArea>();
+            return area != null && !area.boxesOnly && area.GetComponent<OrderBox>() == null
+                && area.GetComponent<ObjectPlacing>() == null && area.PlacablePoints.Contains(point)
+                && area.storageType.HasFlag(product.storageType)
+                && !area.PlacablePoints.Any(x => x != null && x.Floor == point.Floor && x.objectToGrab != null
+                    && (x.objectToGrab.GetComponent<SellableObject>() == null
+                        || x.objectToGrab.GetComponent<SellableObject>().Name != product.Name));
+        }
+
+        public PlacablePoint FindReturnPoint(SellableObject product)
+        {
+            if (CanReturnProductToPoint(product, product.putPoint)) return product.putPoint;
+            return GameObject.FindObjectsOfType<PlacablePoint>()
+                .Where(x => CanReturnProductToPoint(product, x))
+                .OrderBy(x => (x.transform.position - product.transform.position).sqrMagnitude).FirstOrDefault();
+        }
+
+        public void ReturnCustomerProduct(SellableObject product, PlacablePoint point)
+        {
+            product.transform.SetParent(null, true);
+            product.enabled = true;
+            product.awaitingShelfReturn = point == null;
+            product.isAvailable = point != null;
+            product.putPoint = point;
+            if (point != null)
+            {
+                point.objectToGrab = product.gameObject;
+                point.isAvailable = false;
+                product.transform.SetPositionAndRotation(point.transform.position, point.transform.rotation);
+                if (point.Floor != null) point.Floor.SetPriceDetails(product);
+            }
+            // A full shelf is not a reason to destroy stock. Persist a hidden pending return.
+            product.gameObject.SetActive(point != null);
+            if (!CurrentEquipmentList.Contains(product.gameObject)) CurrentEquipmentList.Add(product.gameObject);
+            SaveLoadManager.Instance.SaveReturnedProduct(product, point);
+        }
+
+        private void RetryPendingShelfReturns()
+        {
+            if (Time.time < nextShelfReturnCheck) return;
+            nextShelfReturnCheck = Time.time + 1f;
+            foreach (GameObject item in CurrentEquipmentList.ToArray())
+            {
+                SellableObject product = item != null ? item.GetComponent<SellableObject>() : null;
+                if (product == null || !product.awaitingShelfReturn) continue;
+                PlacablePoint point = FindReturnPoint(product);
+                if (point != null) ReturnCustomerProduct(product, point);
             }
         }
 
@@ -358,6 +417,8 @@ namespace MarketShopandRetailSystem
                 && !x.isAvailable && x.objectToGrab != null
                 && x.GetComponentInParent<OrderBox>() == null
                 && !productsInTransit.Contains(x.objectToGrab.transform)
+                && x.objectToGrab.GetComponent<SellableObject>() != null
+                && x.objectToGrab.GetComponent<SellableObject>().isAvailable
                 && CurrentOrderBox.CanStoreProduct(x.objectToGrab.GetComponent<SellableObject>()));
             if (source == null) return;
             SellableObject product = source.objectToGrab.GetComponent<SellableObject>();
@@ -669,7 +730,14 @@ namespace MarketShopandRetailSystem
 
                     GameObject newEquipment = Instantiate(item.gameObject, position, Quaternion.Euler(rotation));
                     newEquipment.layer = LayerMask.NameToLayer("Default");
-                    newEquipment.GetComponent<SellableObject>().sellableObjectIndex = savedObj.objectIndex;
+                    SellableObject product = newEquipment.GetComponent<SellableObject>();
+                    product.sellableObjectIndex = savedObj.objectIndex;
+                    product.awaitingShelfReturn = savedObj.awaitingShelfReturn;
+                    if (savedObj.awaitingShelfReturn)
+                    {
+                        product.isAvailable = false;
+                        newEquipment.SetActive(false);
+                    }
                     CurrentEquipmentList.Add(newEquipment);
                 }
             }

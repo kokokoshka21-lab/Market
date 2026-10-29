@@ -7,6 +7,7 @@ namespace MarketShopandRetailSystem
     {
         [HideInInspector]
         public bool isAvailable = true;
+        [HideInInspector] public bool awaitingShelfReturn;
         public string Name;
         public int BuyingPrice;
         public int SellingPrice;

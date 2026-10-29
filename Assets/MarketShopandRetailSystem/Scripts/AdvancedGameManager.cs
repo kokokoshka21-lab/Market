@@ -29,6 +29,10 @@ namespace MarketShopandRetailSystem
         [Range(0f, 1f)]
         [Tooltip("Chance of choosing self-service when both checkout types are available.")]
         public float selfServiceCheckoutChance = 0.5f;
+        [Min(1f)] [Tooltip("Seconds a customer waits at an unattended ordinary checkout.")]
+        public float unattendedCheckoutWaitTime = 30f;
+        [Min(1f)] [Tooltip("Maximum seconds waiting for a turn, reaching a checkout, or without scanning progress.")]
+        public float checkoutQueueMaxWaitTime = 120f;
         private int BaseNPCShoppingPercentageRate = 0;
         public bool postersAmountCanEffectNPCShoppingPercentageRate = false;
         public string CurrencySymbol = "$";

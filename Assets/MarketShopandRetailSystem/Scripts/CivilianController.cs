@@ -20,6 +20,133 @@ namespace MarketShopandRetailSystem
         public Status currentStatus;
         public List<GameObject> myBasket;
         public bool isThief = false;
+        private float queueStartedAt = -1f;
+        private float arrivedAtCheckoutAt = -1f;
+        private float unattendedSince = -1f;
+        private bool switchedToSelfService;
+
+        public static bool QueuePatienceExpired(float now, float arrivedAt, float unattendedAt,
+            bool servingThisCustomer, bool hasAttendant, float unattendedLimit, float queueLimit)
+        {
+            bool unattendedExpired = !hasAttendant && unattendedAt >= 0f
+                && now - unattendedAt >= Mathf.Max(1f, unattendedLimit);
+            bool queueExpired = !servingThisCustomer && arrivedAt >= 0f
+                && now - arrivedAt >= Mathf.Max(1f, queueLimit);
+            return unattendedExpired || queueExpired;
+        }
+
+        private void ResetQueueTimers()
+        {
+            queueStartedAt = Time.time;
+            arrivedAtCheckoutAt = unattendedSince = -1f;
+        }
+
+        private bool UpdateCheckoutPatience()
+        {
+            if (currentStatus != Status.isInQueue) return false;
+            CashRegister register = target != null ? target.GetComponentInParent<CashRegister>() : null;
+            if (register == null || !register.isActiveAndEnabled)
+            {
+                LeaveCheckout(register);
+                return true;
+            }
+            float now = Time.time;
+            float maxWait = AdvancedGameManager.Instance.checkoutQueueMaxWaitTime;
+            bool arrived = Vector3.Distance(transform.position, target.position) <= agent.stoppingDistance + 0.15f;
+            if (arrivedAtCheckoutAt < 0f && !arrived)
+            {
+                // An unreachable destination must not leave a customer walking forever either.
+                if (queueStartedAt >= 0f && now - queueStartedAt >= Mathf.Max(1f, maxWait))
+                {
+                    LeaveCheckout(register);
+                    return true;
+                }
+                return false;
+            }
+            if (arrivedAtCheckoutAt < 0f) arrivedAtCheckoutAt = now;
+            bool attended = register.HasAttendant();
+            if (attended) unattendedSince = -1f;
+            else if (unattendedSince < 0f) unattendedSince = now;
+            bool serving = register.IsServing(this);
+            // Presence alone is not progress: a stalled cashier/player must not hold a basket forever.
+            bool stalled = serving && now - register.ServiceProgressAt >= Mathf.Max(1f, maxWait);
+            if (!stalled && !QueuePatienceExpired(now, arrivedAtCheckoutAt, unattendedSince, serving,
+                attended, AdvancedGameManager.Instance.unattendedCheckoutWaitTime, maxWait)) return false;
+            LeaveCheckout(register);
+            return true;
+        }
+
+        private void LeaveCheckout(CashRegister register)
+        {
+            if (register != null) register.CancelCustomer(this);
+            // Preserve unpaid stock if the game is saved while walking to another checkout or shelf.
+            // The runtime flag stays false while the customer still owns the basket.
+            foreach (GameObject item in myBasket)
+            {
+                SellableObject product = item != null ? item.GetComponent<SellableObject>() : null;
+                if (product != null) SaveLoadManager.Instance.SaveReturnedProduct(product, null);
+            }
+            CashRegister alternative = null;
+            if (!switchedToSelfService)
+            {
+                alternative = CashRegister.FindCustomerRegisters().Where(x => x.selfService && x != register)
+                    .OrderBy(x => Vector3.Distance(transform.position, x.pointCustomersCome.position))
+                    .FirstOrDefault(x => CanReachCheckout(x));
+            }
+            if (alternative != null)
+            {
+                switchedToSelfService = true;
+                ResetQueueTimers();
+                target = alternative.pointCustomersCome;
+                GoToTarget();
+                return;
+            }
+            currentStatus = Status.isReturningProducts;
+            StartCoroutine(ReturnProductsAndLeave());
+        }
+
+        private bool CanReachCheckout(CashRegister register)
+        {
+            if (!agent.isOnNavMesh) return false;
+            var path = new NavMeshPath();
+            return agent.CalculatePath(register.pointCustomersCome.position, path)
+                && path.status == NavMeshPathStatus.PathComplete;
+        }
+
+        private IEnumerator ReturnProductsAndLeave()
+        {
+            foreach (GameObject item in myBasket.ToArray())
+            {
+                SellableObject product = item != null ? item.GetComponent<SellableObject>() : null;
+                if (product == null) { myBasket.Remove(item); continue; }
+                PlacablePoint point = InventoryManager.Instance.FindReturnPoint(product);
+                if (point != null)
+                {
+                    // Reserve the destination while the customer walks back to the shelf.
+                    point.objectToGrab = item;
+                    point.isAvailable = false;
+                    PhysicalEquipmentDetails shelf = point.GetComponentInParent<PhysicalEquipmentDetails>();
+                    Vector3 destination = shelf != null ? shelf.transform.position : point.transform.position;
+                    var path = new NavMeshPath();
+                    if (agent.isOnNavMesh && agent.CalculatePath(destination, path)
+                        && path.status == NavMeshPathStatus.PathComplete)
+                    {
+                        agent.isStopped = false;
+                        agent.SetPath(path);
+                        float deadline = Time.time + 15f;
+                        while (point != null && Time.time < deadline
+                            && (agent.pathPending || agent.remainingDistance > agent.stoppingDistance + 0.15f))
+                            yield return null;
+                        agent.isStopped = true;
+                        animator.SetTrigger("Grab");
+                        yield return new WaitForSeconds(0.6f);
+                    }
+                }
+                InventoryManager.Instance.ReturnCustomerProduct(product, point);
+                myBasket.Remove(item); // GoAfterShopping must not destroy returned stock.
+            }
+            GoAfterShopping();
+        }
 
         public void SpeakwithHero()
         {
@@ -155,7 +282,8 @@ namespace MarketShopandRetailSystem
         void Update()
         {
             animator.SetFloat("Speed", agent.velocity.magnitude);
-            if (isGrabbing) return;
+            if (isGrabbing || currentStatus == Status.isReturningProducts) return;
+            if (UpdateCheckoutPatience()) return;
             if (Time.time < LastTimeSpeking + 4)
             {
                 Vector3 lookDirection = HeroPlayerScript.Instance.transform.position - transform.position;
@@ -348,6 +476,11 @@ namespace MarketShopandRetailSystem
                 }
                 if (hasPath && agent.hasPath && (agent.pathStatus == NavMeshPathStatus.PathPartial || agent.pathStatus == NavMeshPathStatus.PathInvalid) && (currentStatus == Status.isInQueue || currentStatus == Status.isShopping))
                 {
+                    if (currentStatus == Status.isInQueue)
+                    {
+                        LeaveCheckout(target != null ? target.GetComponentInParent<CashRegister>() : null);
+                        return;
+                    }
                     ClearMyBasket();
                     GoAfterShopping();
                 }
@@ -405,6 +538,8 @@ namespace MarketShopandRetailSystem
         public void GoAfterShopping()
         {
             ClearMyBasket();
+            queueStartedAt = arrivedAtCheckoutAt = unattendedSince = -1f;
+            switchedToSelfService = false;
             currentStatus = Status.isWalkingAround;
             lastCheckTime = Time.time;
             target = CityPointsManager.Instance.GetRandomTargetPoint();
@@ -506,7 +641,14 @@ namespace MarketShopandRetailSystem
                 // Choose once on entering checkout, rather than changing lanes on every update.
                 CashRegister selected = CashRegister.SelectForCustomer(CashRegister.FindCustomerRegisters(),
                     transform.position, AdvancedGameManager.Instance.selfServiceCheckoutChance, Random.value);
-                if (selected == null) return;
+                if (selected == null)
+                {
+                    currentStatus = Status.isReturningProducts;
+                    StartCoroutine(ReturnProductsAndLeave());
+                    return;
+                }
+                switchedToSelfService = false;
+                ResetQueueTimers();
                 target = selected.pointCustomersCome.transform;
                 currentStatus = Status.isInQueue;
                 GoToTarget();
@@ -541,6 +683,7 @@ namespace MarketShopandRetailSystem
         isGoingHome,
         isShopping,
         isInQueue,
-        IsEscaping
+        IsEscaping,
+        isReturningProducts
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.IO;
 using System.Collections.Generic;
 using UnityEngine;
@@ -377,6 +378,41 @@ namespace MarketShopandRetailSystem
                 rotation = new Vector3Data(rotation)
             };
             currentSaveData.sellableObjects.Add(obj);
+            SaveGame();
+        }
+
+        public void SaveReturnedProduct(SellableObject product, PlacablePoint destination)
+        {
+            EnsureInitialized();
+            SellableObjectData record = currentSaveData.sellableObjects.Find(x =>
+                x.productName == product.Name && x.objectIndex == product.sellableObjectIndex);
+            if (record == null)
+            {
+                product.sellableObjectIndex = currentSaveData.sellableObjects.Where(x => x.productName == product.Name)
+                    .Select(x => x.objectIndex).DefaultIfEmpty(-1).Max() + 1;
+                record = new SellableObjectData { productName = product.Name, objectIndex = product.sellableObjectIndex };
+                currentSaveData.sellableObjects.Add(record);
+            }
+            record.position = new Vector3Data(product.transform.position);
+            record.rotation = new Vector3Data(product.transform.eulerAngles);
+            record.awaitingShelfReturn = destination == null;
+            record.shelfName = null;
+            record.slotLocalPosition = null;
+            record.slotLocalRotation = null;
+            if (destination != null)
+            {
+                PhysicalEquipmentDetails shelf = destination.GetComponentInParent<PhysicalEquipmentDetails>();
+                PlacedObjectData placed = shelf != null ? GetPlacedObject(shelf.Name, shelf.equipmentIndex) : null;
+                if (placed != null)
+                {
+                    SetSlotStatus(placed, destination.ID, 1);
+                    record.shelfName = shelf.Name;
+                    record.shelfIndex = shelf.equipmentIndex;
+                    record.slotIndex = destination.ID;
+                    record.slotLocalPosition = new Vector3Data(Vector3.zero);
+                    record.slotLocalRotation = new Vector3Data(Vector3.zero);
+                }
+            }
             SaveGame();
         }
 
