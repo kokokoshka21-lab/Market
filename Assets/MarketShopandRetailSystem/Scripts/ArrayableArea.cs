@@ -13,6 +13,9 @@ namespace MarketShopandRetailSystem
         [Tooltip("Use the existing placement points for whole order boxes instead of individual products.")]
         public bool boxesOnly = false;
 
+        // Hierarchy identity for shelves authored in the scene; no prefab/scene edits required.
+        public string SceneShelfId { get; private set; }
+
         public bool CanPlaceBox(PlacablePoint point)
         {
             return boxesOnly && GetComponent<OrderBox>() == null
@@ -22,6 +25,15 @@ namespace MarketShopandRetailSystem
 
         private void Awake()
         {
+            string hierarchy = "";
+            for (Transform node = transform; node != null; node = node.parent)
+            {
+                Transform[] siblings = node.parent != null ? node.parent.Cast<Transform>().ToArray()
+                    : node.gameObject.scene.GetRootGameObjects().Select(x => x.transform).ToArray();
+                int occurrence = siblings.TakeWhile(x => x != node).Count(x => x.name == node.name);
+                hierarchy = "/" + System.Uri.EscapeDataString(node.name) + "[" + occurrence + "]" + hierarchy;
+            }
+            SceneShelfId = gameObject.scene.path + hierarchy;
             detail = GetComponent<PhysicalEquipmentDetails>();
             OrderBox = GetComponent<OrderBox>();
             for (int i = 0; i < PlacablePoints.Length; i++)

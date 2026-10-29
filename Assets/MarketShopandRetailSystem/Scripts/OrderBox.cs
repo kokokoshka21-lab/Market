@@ -19,10 +19,11 @@ namespace MarketShopandRetailSystem
         public Collider collider;
         public PlacablePoint ShelfPoint { get; private set; }
         private Coroutine locationSave;
+        public bool IsMovingToShelf { get; private set; }
 
         public bool TryPlaceOnShelf()
         {
-            if (!isHolding || TriggerScript.Instance == null) return false;
+            if (!isHolding || IsMovingToShelf || TriggerScript.Instance == null) return false;
             PlacablePoint point = TriggerScript.Instance.placablePoints
                 .Where(x => x != null && !x.transform.IsChildOf(transform))
                 .OrderBy(x => (x.transform.position - CameraScript.Instance.transform.position).sqrMagnitude)
@@ -40,7 +41,10 @@ namespace MarketShopandRetailSystem
             InventoryManager.Instance.CurrentOrderBox = null;
             if (AdvancedGameManager.Instance.controllerType == ControllerType.Mobile)
                 GameCanvas.Instance.Button_GetProductBackToOrderBox.SetActive(false);
+            Vector3 startPosition = transform.position;
             AttachToShelf(point);
+            saved.boxShelfSceneId = InventoryManager.Instance.CurrentEquipmentList.Contains(owner.gameObject)
+                ? null : owner.GetComponent<ArrayableArea>().SceneShelfId;
             saved.boxShelfName = owner.Name;
             saved.boxShelfIndex = owner.equipmentIndex;
             saved.boxShelfSlot = point.ID;
@@ -48,9 +52,44 @@ namespace MarketShopandRetailSystem
             saved.rotation = new Vector3Data(transform.eulerAngles);
             saved.scale = new Vector3Data(transform.localScale);
             SaveLoadManager.Instance.SaveGame();
+            StartCoroutine(FlyToShelf(point, startPosition));
             AdvancedGameManager.Instance.CurrentMode = Mode.Free;
             AudioManager.Instance.Play_audioClip_Locate();
             return true;
+        }
+
+        private IEnumerator FlyToShelf(PlacablePoint point, Vector3 startPosition)
+        {
+            IsMovingToShelf = true;
+            BoxCollider boxCollider = GetComponent<BoxCollider>();
+            boxCollider.enabled = false;
+            transform.position = startPosition;
+            try
+            {
+                float elapsed = 0f;
+                while (point != null && elapsed < 0.25f)
+                {
+                    transform.position = Vector3.Lerp(startPosition, point.transform.position, elapsed / 0.25f);
+                    elapsed += Time.deltaTime;
+                    yield return null;
+                }
+                if (point != null) transform.SetPositionAndRotation(point.transform.position, point.transform.rotation);
+            }
+            finally
+            {
+                boxCollider.enabled = true;
+                IsMovingToShelf = false;
+            }
+        }
+
+        // Called while loading, before the first physics step or delayed slot restoration.
+        public void PrepareShelfRestore(PlacedObjectData saved)
+        {
+            if (saved == null || (string.IsNullOrEmpty(saved.boxShelfName)
+                && string.IsNullOrEmpty(saved.boxShelfSceneId))) return;
+            rigidbody = GetComponent<Rigidbody>();
+            rigidbody.isKinematic = true;
+            rigidbody.useGravity = false;
         }
 
         public void AttachToShelf(PlacablePoint point)
@@ -82,6 +121,7 @@ namespace MarketShopandRetailSystem
             if (saved != null)
             {
                 saved.boxShelfName = null;
+                saved.boxShelfSceneId = null;
                 SaveLoadManager.Instance.SaveGame();
             }
         }
@@ -96,6 +136,7 @@ namespace MarketShopandRetailSystem
             if (arrayableArea == null) arrayableArea = GetComponent<ArrayableArea>();
             PhysicalEquipmentDetails detail = GetComponent<PhysicalEquipmentDetails>();
             PlacedObjectData saved = SaveLoadManager.Instance.GetPlacedObject(detail.Name, detail.equipmentIndex);
+            PrepareShelfRestore(saved);
             var contents = new List<BoxSlotData>();
             if (saved != null && saved.hasBoxContents)
             {
@@ -221,7 +262,7 @@ namespace MarketShopandRetailSystem
 
         public void Interact()
         {
-            if (!ContentsReady) return;
+            if (!ContentsReady || IsMovingToShelf) return;
             if (!isHolding && !HeroPlayerScript.Instance.isHoldingBox)
             {
                 if (locationSave != null) StopCoroutine(locationSave);

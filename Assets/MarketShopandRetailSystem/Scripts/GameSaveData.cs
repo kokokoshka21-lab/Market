@@ -75,6 +75,7 @@ namespace MarketShopandRetailSystem
         public Vector3Data scale;
         public List<ShelfSlotData> shelfSlots = new List<ShelfSlotData>(); // For shelves/displays
         // Optional whole-box attachment; absent in older saves.
+        public string boxShelfSceneId;
         public string boxShelfName;
         public int boxShelfIndex;
         public int boxShelfSlot;

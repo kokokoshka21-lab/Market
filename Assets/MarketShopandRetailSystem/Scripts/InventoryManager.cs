@@ -102,6 +102,7 @@ namespace MarketShopandRetailSystem
                     FPSHandRotator.Instance.Switch_Hand(Hand_Type.Build);
                     CreatedObject = Instantiate(equipment.EquipmentDetail.gameObject);
                     currentPlacingScript = CreatedObject.GetComponent<ObjectPlacing>();
+                    currentPlacingScript.ConfigurePlacementPreview();
                     currentEquipment = equipment;
                     hasPlacementSurface = false;
                     wheelAcc = 0f;
@@ -137,7 +138,9 @@ namespace MarketShopandRetailSystem
                 return;
             }
             if (shelf.GetComponent<ArrayableArea>().PlacablePoints.Any(point => point.objectToGrab != null
-                && productsInTransit.Contains(point.objectToGrab.transform)))
+                && (productsInTransit.Contains(point.objectToGrab.transform)
+                    || (point.objectToGrab.GetComponent<OrderBox>() != null
+                        && point.objectToGrab.GetComponent<OrderBox>().IsMovingToShelf))))
             {
                 GameCanvas.Instance.Show_Warning_Not("Wait until the products are placed.", false);
                 return;
@@ -580,14 +583,38 @@ namespace MarketShopandRetailSystem
                 PhysicalEquipmentDetails detail = equipment.GetComponent<PhysicalEquipmentDetails>();
                 if (box == null || detail == null) continue;
                 PlacedObjectData saved = SaveLoadManager.Instance.GetPlacedObject(detail.Name, detail.equipmentIndex);
-                if (saved == null || string.IsNullOrEmpty(saved.boxShelfName)) continue;
-                PhysicalEquipmentDetails shelf = CurrentEquipmentList.Where(x => x != null)
-                    .Select(x => x.GetComponent<PhysicalEquipmentDetails>()).FirstOrDefault(x => x != null
-                        && x.Name == saved.boxShelfName && x.equipmentIndex == saved.boxShelfIndex);
-                ArrayableArea area = shelf != null ? shelf.GetComponent<ArrayableArea>() : null;
-                if (area == null || saved.boxShelfSlot < 0 || saved.boxShelfSlot >= area.PlacablePoints.Length) continue;
-                PlacablePoint point = area.PlacablePoints[saved.boxShelfSlot];
-                if (area.CanPlaceBox(point)) box.AttachToShelf(point);
+                if (saved == null || (string.IsNullOrEmpty(saved.boxShelfName)
+                    && string.IsNullOrEmpty(saved.boxShelfSceneId))) continue;
+                ArrayableArea area = null;
+                ArrayableArea[] sceneShelves = GameObject.FindObjectsOfType<ArrayableArea>()
+                    .Where(x => x.GetComponent<OrderBox>() == null
+                        && !CurrentEquipmentList.Contains(x.gameObject)).ToArray();
+                if (!string.IsNullOrEmpty(saved.boxShelfSceneId))
+                    area = sceneShelves.FirstOrDefault(x => x.SceneShelfId == saved.boxShelfSceneId);
+                else
+                {
+                    PhysicalEquipmentDetails shelf = CurrentEquipmentList.Where(x => x != null)
+                        .Select(x => x.GetComponent<PhysicalEquipmentDetails>()).FirstOrDefault(x => x != null
+                            && x.Name == saved.boxShelfName && x.equipmentIndex == saved.boxShelfIndex);
+                    area = shelf != null ? shelf.GetComponent<ArrayableArea>() : null;
+                    // Compatibility with attachments saved before scene identities were recorded.
+                    if (area == null)
+                    {
+                        var matches = sceneShelves.Where(x => {
+                            PhysicalEquipmentDetails d = x.GetComponent<PhysicalEquipmentDetails>();
+                            return d != null && d.Name == saved.boxShelfName && d.equipmentIndex == saved.boxShelfIndex;
+                        }).ToArray();
+                        if (matches.Length == 1) area = matches[0];
+                    }
+                }
+                if (area == null || saved.boxShelfSlot < 0 || saved.boxShelfSlot >= area.PlacablePoints.Length
+                    || !area.CanPlaceBox(area.PlacablePoints[saved.boxShelfSlot]))
+                {
+                    Debug.LogWarning("Cannot restore box shelf slot for " + detail.Name
+                        + ". Keeping the saved box stationary; check the shelf and its placement points.", box);
+                    continue;
+                }
+                box.AttachToShelf(area.PlacablePoints[saved.boxShelfSlot]);
             }
             SellableObject[] sellableObjects = GameObject.FindObjectsOfType<SellableObject>();
             foreach (SellableObjectData saved in SaveLoadManager.Instance.GetAllSellableObjects())
@@ -662,10 +689,11 @@ namespace MarketShopandRetailSystem
 
                     GameObject newEquipment = Instantiate(item.EquipmentDetail.gameObject, position, Quaternion.Euler(rotation), shop.transform);
                     newEquipment.layer = LayerMask.NameToLayer("Default");
-                    if (newEquipment.GetComponent<OrderBox>() == null)
-                    {
-                        Destroy(newEquipment.GetComponent<ObjectPlacing>().Rigidbody_Placing);
-                    }
+                    OrderBox loadedBox = newEquipment.GetComponent<OrderBox>();
+                    if (loadedBox == null)
+                        Destroy(newEquipment.GetComponent<Rigidbody>());
+                    else
+                        loadedBox.PrepareShelfRestore(savedObj);
                     Collider[] colliders = newEquipment.GetComponents<Collider>();
                     for (int z = 0; z < colliders.Length; z++)
                     {

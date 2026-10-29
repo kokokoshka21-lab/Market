@@ -15,14 +15,28 @@ namespace MarketShopandRetailSystem
         public Rigidbody Rigidbody_Placing;
         private readonly HashSet<Material> previewMaterials = new HashSet<Material>();
 
+        private bool isPlacementPreview;
+        private readonly Dictionary<MeshRenderer, Material[]> originalMaterials = new Dictionary<MeshRenderer, Material[]>();
+        private Color originalSpriteColor;
+
         public void ConfigureRelocationPreview()
         {
+            ConfigurePlacementPreview();
+        }
+
+        public void ConfigurePlacementPreview()
+        {
+            if (isPlacementPreview) return;
+            isPlacementPreview = true;
             CacheComponents();
+            if (spriteRenderer != null) originalSpriteColor = spriteRenderer.color;
             foreach (MeshRenderer renderer in meshRenderers)
             {
                 Material[] copies = renderer.sharedMaterials;
+                originalMaterials.Add(renderer, renderer.sharedMaterials);
                 for (int i = 0; i < copies.Length; i++)
                 {
+                    if (copies[i] == null) continue;
                     copies[i] = new Material(copies[i]);
                     copies[i].EnableKeyword("_EMISSION");
                     previewMaterials.Add(copies[i]);
@@ -97,6 +111,17 @@ namespace MarketShopandRetailSystem
         private void Start()
         {
             CacheComponents();
+            if (!isPlacementPreview)
+            {
+                // A prefab dropped into the scene is real equipment, not a construction ghost.
+                foreach (Collider rootCollider in GetComponents<Collider>()) rootCollider.isTrigger = false;
+                if (GetComponent<OrderBox>() == null && Rigidbody_Placing != null)
+                {
+                    Rigidbody_Placing.isKinematic = true;
+                    Rigidbody_Placing.useGravity = false;
+                }
+                Destroy(this);
+            }
         }
 
         private void OnTriggerStay(Collider other)
@@ -147,6 +172,7 @@ namespace MarketShopandRetailSystem
 
         public void MakeRed()
         {
+            if (!isPlacementPreview) return;
             CanLocate = false;
             if(Time.time > lastTimeRed + 0.25f)
             {
@@ -166,6 +192,7 @@ namespace MarketShopandRetailSystem
         private float LastTime = 0;
         private void Update()
         {
+            if (!isPlacementPreview) return;
             if (Time.time > LastTime + 0.2f)
             {
                 LastTime = Time.time;
@@ -217,25 +244,12 @@ namespace MarketShopandRetailSystem
 
         private void OnDestroy()
         {
-            PhysicalEquipmentDetails detail = GetComponent<PhysicalEquipmentDetails>();
-            if (detail != null && detail.equipmentType == EquipmentType.Poster)
+            if (isPlacementPreview)
             {
-                if (spriteRenderer == null) return;
-                spriteRenderer.color = Color.white;
-            }
-            else
-            {
-                if (meshRenderers == null) return;
-                foreach (var item in meshRenderers)
-                {
-                    if (item == null) continue;
-                    Material[] materials = item.materials;
-                    for (int i = 0; i < materials.Length; i++)
-                    {
-                        materials[i].DisableKeyword("_EMISSION");
-                    }
-                    item.materials = materials;
-                }
+                if (spriteRenderer != null) spriteRenderer.color = originalSpriteColor;
+                foreach (var entry in originalMaterials)
+                    if (entry.Key != null) entry.Key.sharedMaterials = entry.Value;
+                originalMaterials.Clear();
             }
             list.Clear();
             foreach (Material material in previewMaterials)

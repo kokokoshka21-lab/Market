@@ -1,0 +1,6 @@
+{
+    "name": "MarketShop.BoxShelf.EditorTests",
+    "references": [],
+    "includePlatforms": ["Editor"],
+    "optionalUnityReferences": ["TestAssemblies"]
+}
